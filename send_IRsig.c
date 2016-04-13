@@ -28,10 +28,19 @@ pwm = mraa_pwm_init(5);
 
 	while(1)
 	{
-            mraa_pwm_write(pwm, 0.5);
-            sleep(1);
+            mraa_pwm_write(pwm, 0.5); //preamble
+            usleep(20000);
             mraa_pwm_write(pwm, 0);
-            sleep(1);
+            usleep(5000);
+	    mraa_pwm_write(pwm, 0.5);                        
+            usleep(5000);
+            mraa_pwm_write(pwm, 0);                        
+            usleep(5000);
+	    mraa_pwm_write(pwm, 0.5);                        
+            usleep(5000);
+ 	    mraa_pwm_write(pwm, 0);
+	    usleep(20000);	     //postamble
+	         
 
         }
 	
