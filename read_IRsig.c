@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include "gpio.h"
 
+int recvd[12];
+
 int main()
 {
     int value;
@@ -9,10 +11,24 @@ int main()
     gpio_init(gpio);
     gpio_direction(gpio, INPUT);
 
+int index = 0;
 while(1) {
-    value = gpio_read(gpio);
+    
+    value = !gpio_read(gpio);
+    recvd[index] = value;
     printf("%d", value);
-    sleep(1);
+    fflush(stdout);
+    usleep(5000);
+   
+
+
+    index++;
+    if (index > 11)
+    {
+	index = 0;
+
+    }
+	
 }
 
 
