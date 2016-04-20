@@ -7,14 +7,6 @@
 #define MAXBUFSIZ 1024
 
 
-
-
-
-
-
-
-
-
 int main()
 {
 
