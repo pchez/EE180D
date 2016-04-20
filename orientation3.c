@@ -85,6 +85,39 @@ int getPosture(data_t accel_data, float pitch_angle, float yaw_angle)
     
 }
 
+void printPostureString(int curr_posture_upper)
+{
+	char *posture_string;
+	switch(curr_posture_upper)
+	{
+		case 0:
+			posture_string = "upright";
+			break;
+		case 1:
+			posture_string = "face up";
+			break;
+		case 2:
+			posture_string = "face down";
+			break;
+		case 3:
+			posture_string = "left";
+			break;
+		case 4:
+			posture_string = "right";
+			break;
+		case 5:
+			posture_string = "sitting";
+			break;
+		case 6:
+			posture_string = "standing";
+			break;
+		default:
+			posture_string = "undefined";
+	}
+        
+    printf("%s\n", posture_string);
+}
+
 typedef enum {
 
     ACCEL_X,
@@ -107,6 +140,8 @@ typedef enum {
     POS,
 
 } dir_t;
+
+/*
 
 char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
 
@@ -166,7 +201,7 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
             posture = prev_posture;
         prev_posture = posture;
         posture_int = posture;
-        */
+        
         snprintf(posture_value, 6, "%d", posture);
         message4 = concat(message1, "posture_int");
         message5 = concat(message4, message2);
@@ -176,6 +211,30 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
     else error("ERROR: invalid call to construct_message\n");
 
 
+}
+*/
+
+char* construct_message(float data, char* name) {
+
+    char value[30];
+    char *full_message_posture;
+    char *full_message;
+    char message1[] = "{\"n\": \"";
+    char message2[] = "\", \"v\": \"";
+    char message3[] = "\"}";
+    char *message4;
+    char *message5;
+    char *message6;
+    int posture;
+    int prev_posture = 0;
+
+
+    snprintf(value, 6, "%f", data);
+    message4 = concat(message1, name);
+    message5 = concat(message4, message2);
+    message6 = concat(message5, value);
+    full_message = concat(message6, message3);
+    return full_message;
 }
 
 int getAngles(data_t accel_data, float *pitch_angle, float *yaw_angle)
@@ -203,10 +262,25 @@ int getAngles(data_t accel_data, float *pitch_angle, float *yaw_angle)
         accel_data_x = -1;
 
     
-    *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
-    *yaw_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
+    *pitch_angle = acos(accel_data_y/-1);//*180/M_PI-90.0;
+    *yaw_angle = acos(accel_data_x/-1);//*180/M_PI-90.0;
     
     return 0;
+}
+
+float getHeading(float mx, float my, float mz, float pitch, float yaw) {
+
+	float heading;
+	float mxh;
+	float myh;
+	
+	
+	mxh = mx*cos(yaw) + my*sin(pitch) * sin(yaw) - mz * cos(pitch)*sin(yaw);
+	myh = my * cos(pitch) +mz*sin(pitch);
+
+	heading = atan(myh/mxh);//*180/M_PI-90.0;
+	return heading;
+
 }
 
 int isMoving(data_t gyro_data)
@@ -230,6 +304,17 @@ int main(int argc, char *argv[]) {
 	data_t accel_data, gyro_data, mag_data;
 	int16_t temperature;
     float pitch_angle, yaw_angle;
+    
+    
+    //names of IoT cloud catalog components
+    //change these if you have differing names    
+    char *x_accel_name = "accel_x";
+    char *y_accel_name = "accel_y";
+    char *z_accel_name = "accel_z";
+    char *posture_cloudname = "posture_int";
+    
+    char posture_string[10];
+    
     char *x_accel_message;
     char *y_accel_message;
     char *z_accel_message;
@@ -260,9 +345,9 @@ int main(int argc, char *argv[]) {
 	g_res = calc_gyro_res(G_SCALE_245DPS);
 
 	mag = mag_init();
-	set_mag_scale(mag, M_SCALE_2GS);
+	set_mag_scale(mag, M_SCALE_12GS);
 	set_mag_ODR(mag, M_ODR_125);
-	m_res = calc_mag_res(M_SCALE_2GS);
+	m_res = calc_mag_res(M_SCALE_12GS);
 
     portno = 41234;
 
@@ -294,91 +379,73 @@ int main(int argc, char *argv[]) {
         
 		accel_data = read_accel(accel, a_res);
 		gyro_data = read_gyro(gyro, g_res);
-		//mag_data = read_mag(mag, m_res);
+		mag_data = read_mag(mag, m_res);
 		//temperature = read_temp(accel);
         
         getAngles(accel_data, &pitch_angle, &yaw_angle);
-        printf("is moving: %d\n", isMoving(gyro_data) );
+        //printf("is moving: %d\n", isMoving(gyro_data) );
         //printf("yaw angle: %f ", yaw_angle);
-        //printf("pitch angle: %f ", pitch_angle);
+        //printf("pitch angle: %f \n", pitch_angle);
+        printf("heading: %f \n", getHeading(mag_data.x, mag_data.y, mag_data.z, pitch_angle, yaw_angle));
         //printf("z vector: %f\n", accel_data.z);
         
         
 		if (count == 3) {
             //send posture to cloud
             
-            if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
+    
+            ///////////SEND ACCELERATION//////////
+            /*
+
+            //contruct all messages and send: x, y, and z    
+		    x_accel_message = construct_message(accel_data.x, x_accel_name);
+		    n = write(sockfd,x_accel_message,strlen(x_accel_message)); //write to the socket
+    	    if (n < 0) 
+              error("ERROR writing to socket");
+
+            y_accel_message = construct_message(accel_data.y, y_accel_name);		
+    	    n = write(sockfd,y_accel_message,strlen(y_accel_message)); //write to the socket
+    	    if (n < 0) 
+        	   error("ERROR writing to socket");
+
+
+            z_accel_message = construct_message(accel_data.z, z_accel_name);
+    	    n = write(sockfd,z_accel_message,strlen(z_accel_message)); //write to the socket
+    	    if (n < 0) 
+        	   error("ERROR writing to socket");
+        
+            //END SEND ACCELERATION */
+            
+        
+            ///////////////SEND POSTURE////////////////
+
+           if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
                 curr_posture = getPosture(accel_data, pitch_angle, yaw_angle);
             else
                 curr_posture = prev_posture;    //else just use the old posture
+                
             if (curr_posture==UNDEFINED)
                 curr_posture = prev_posture;
             prev_posture = curr_posture; //set new value for prev posture
             
-            posture_message = construct_message(POS, accel_data, curr_posture);
+            posture_message = construct_message((float) curr_posture, posture_cloudname);
             n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-    
-			//store accel data in string
-            
-            /*
-			x_accel_message = construct_message(X_DIR, accel_data);
-
-		    //printf("%s\n", full_message_x);
-
-    		//send UDP message
-    		n = write(sockfd,x_accel_message,strlen(x_accel_message)); //write to the socket
+            //printf("the posture message is: %s", posture_message);
     		if (n < 0) 
         		error("ERROR writing to socket");
 
-        	y_accel_message = construct_message(Y_DIR, accel_data);
+            count = 0;
 
-		    //printf("%s\n", full_message_y);		
-
-    		n = write(sockfd,y_accel_message,strlen(y_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-
-
-            z_accel_message = construct_message(Z_DIR, accel_data);
-		    //printf("%s\n", full_message_z);
-
-    		n = write(sockfd,z_accel_message,strlen(z_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-            */
-        	count = 0;
-
+            //END SEND POSTURE
 		}
         
-        char *posture_string;
-        switch(curr_posture)
-        {
-            case 0:
-                posture_string = "upright";
-                break;
-            case 1:
-                posture_string = "face up";
-                break;
-            case 2:
-                posture_string = "face down";
-                break;
-            case 3:
-                posture_string = "left";
-                break;
-            case 4:
-                posture_string = "right";
-                break;
-            default:
-                posture_string = "undefined";
-        }
-        
-        printf("current orientation: %s \n", posture_string);
+        //printf("current orientation: ");
+        //printPostureString(curr_posture);
 		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
-		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
+		//printf("X: %f\t Y: %f\t Z: %f\t||", accel_data.x, accel_data.y, accel_data.z);
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", gyro_data.x, gyro_data.y, gyro_data.z);
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
+		//printf("\n");
 		//printf("\t%ld\n", temperature);
 		count++;
 		usleep(100000);
