@@ -262,8 +262,8 @@ int getAngles(data_t accel_data, float *pitch_angle, float *yaw_angle)
         accel_data_x = -1;
 
     
-    *pitch_angle = atan(accel_data_y/accel_data_z);//*180/M_PI-90.0;
-    *yaw_angle = atan(accel_data_x/accel_data_z);//*180/M_PI-90.0;
+    *pitch_angle = atan2(accel_data_y, accel_data_z);//*180/M_PI-90.0;
+    *yaw_angle = atan2(accel_data_x, accel_data_z);//*180/M_PI-90.0;
     
     return 0;
 }
@@ -278,7 +278,11 @@ float getHeading(float mx, float my, float mz, float pitch, float yaw) {
 	mxh = mx*cos(yaw) + my*sin(pitch) * sin(yaw) - mz * cos(pitch)*sin(yaw);
 	myh = my * cos(pitch) +mz*sin(pitch);
 
-	heading = atan(myh/mxh)*2*180/M_PI;
+	heading = atan2(myh,mxh)*180/M_PI + (212.0/1000.0) * 180/M_PI;
+	
+	if (heading < 0)
+		heading+=360;
+	
 	return heading;
 
 }
@@ -351,6 +355,8 @@ int main(int argc, char *argv[]) {
 
     portno = 41234;
 
+
+
     //create socket
     sockfd = socket(AF_INET, SOCK_DGRAM, 0); //create a new socket
     if (sockfd < 0) 
@@ -389,55 +395,6 @@ int main(int argc, char *argv[]) {
         printf("heading: %f \n", getHeading(mag_data.x, mag_data.y, mag_data.z, pitch_angle, yaw_angle));
         //printf("z vector: %f\n", accel_data.z);
         
-        
-		if (count == 3) {
-            //send posture to cloud
-            
-    
-            ///////////SEND ACCELERATION//////////
-            /*
-
-            //contruct all messages and send: x, y, and z    
-		    x_accel_message = construct_message(accel_data.x, x_accel_name);
-		    n = write(sockfd,x_accel_message,strlen(x_accel_message)); //write to the socket
-    	    if (n < 0) 
-              error("ERROR writing to socket");
-
-            y_accel_message = construct_message(accel_data.y, y_accel_name);		
-    	    n = write(sockfd,y_accel_message,strlen(y_accel_message)); //write to the socket
-    	    if (n < 0) 
-        	   error("ERROR writing to socket");
-
-
-            z_accel_message = construct_message(accel_data.z, z_accel_name);
-    	    n = write(sockfd,z_accel_message,strlen(z_accel_message)); //write to the socket
-    	    if (n < 0) 
-        	   error("ERROR writing to socket");
-        
-            //END SEND ACCELERATION */
-            
-        
-            ///////////////SEND POSTURE////////////////
-
-           if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
-                curr_posture = getPosture(accel_data, pitch_angle, yaw_angle);
-            else
-                curr_posture = prev_posture;    //else just use the old posture
-                
-            if (curr_posture==UNDEFINED)
-                curr_posture = prev_posture;
-            prev_posture = curr_posture; //set new value for prev posture
-            
-            posture_message = construct_message((float) curr_posture, posture_cloudname);
-            n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
-            //printf("the posture message is: %s", posture_message);
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-
-            count = 0;
-
-            //END SEND POSTURE
-		}
         
         //printf("current orientation: ");
         //printPostureString(curr_posture);
