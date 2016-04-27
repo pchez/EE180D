@@ -1,0 +1,2 @@
+4/27/16
+- Priscilla: fallrisk1.c - added fann functions and time interval pseudocode (lines 300-341, 489-500) 
