@@ -198,11 +198,15 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
 
 }
 
-int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
+int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitch_angle, float *roll_angle, float *yaw_angle)
 {
     float accel_data_z;
     float accel_data_x;
     float accel_data_y;
+    float gyro_data_x, gyro_rate_x;
+    float gyro_data_y, gyro_rate_y;
+    float gyro_data_z, gyro_rate_z;
+    float gain = 90.0/58.0;
     
     accel_data_z = accel_data.z;
     if (accel_data_z > 1)
@@ -221,10 +225,28 @@ int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
         accel_data_x = 1;
     if (accel_data_x < -1)
         accel_data_x = -1;
-
     
+    
+        
     *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
     *roll_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
+
+	if (isMoving(gyro_data)==0)
+	{
+		gyro_rate_x = 0;
+		gyro_rate_y = 0;
+		gyro_rate_z = 0;
+	}
+	else
+	{
+		gyro_data_z = gyro_data.z;
+		gyro_rate_z = (gyro_data_z - zero_rate.z)*gain;
+
+	}
+	
+    *yaw_angle += gyro_rate_z*0.01;
+    
+    
     
     return 0;
 }
@@ -232,7 +254,7 @@ int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
 int isMoving(data_t gyro_data)
 {   
     float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 60.0)
+    if (gyro_total > 10.0)
     {
         return 1;
     }
@@ -339,11 +361,9 @@ int main(int argc, char *argv[]) {
 		//mag_data = read_mag(mag, m_res);
 		//temperature = read_temp(accel);
         
-        getAngles(accel_data, &pitch_angle, &roll_angle);
-        printf("is moving: %d\n", isMoving(gyro_data) );
-        //printf("roll angle: %f ", roll_angle);
-        //printf("pitch angle: %f ", pitch_angle);
-        //printf("z vector: %f\n", accel_data.z);
+        getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
+        printf("is moving: %f ", isMoving(gyro_data);
+        printf("yaw angle: %f\n", yaw_angle);
         
         
 		if (count == 3) {

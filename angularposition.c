@@ -169,16 +169,15 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
 
 }
 
-int getAngles(data_t accel_data, data_t gyro_data, float *pitch_angle, float *roll_angle, float *yaw_angle)
+int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitch_angle, float *roll_angle, float *yaw_angle)
 {
     float accel_data_z;
     float accel_data_x;
     float accel_data_y;
-    float gyro_data_x, gyro_rate_z;
-    float gyro_data_y;
-    float gyro_data_z;
-    float offset = 2.5;
-    float sensitivity = 5.5;
+    float gyro_data_x, gyro_rate_x;
+    float gyro_data_y, gyro_rate_y;
+    float gyro_data_z, gyro_rate_z;
+    float gain = 90.0/58.0;
     
     accel_data_z = accel_data.z;
     if (accel_data_z > 1)
@@ -197,26 +196,38 @@ int getAngles(data_t accel_data, data_t gyro_data, float *pitch_angle, float *ro
         accel_data_x = 1;
     if (accel_data_x < -1)
         accel_data_x = -1;
+    
+    
         
     *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
     *roll_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
 
-	gyro_data_z = gyro_data.z;
-	gyro_rate_z = (gyro_data_z + 3.05)*sensitivity;
+	if (isMoving(gyro_data)==0)
+	{
+		gyro_rate_x = 0;
+		gyro_rate_y = 0;
+		gyro_rate_z = 0;
+	}
+	else
+	{
+		gyro_data_z = gyro_data.z;
+		gyro_rate_z = (gyro_data_z - zero_rate.z)*gain;
+
+	}
+	
     *yaw_angle += gyro_rate_z*0.01;
-    usleep(1000);
     
     
     
     return 0;
 }
 
-int isMoving(data_t gyro_data, float prev_gyro_x, float prev_gyro_y, float prev_gyro_z)
+
+
+int isMoving(data_t gyro_data)
 {   
-	
-    float gyro_total = sqrt(pow((gyro_data.x-prev_gyro_x), 2) + pow((gyro_data.y-prev_gyro_y), 2) + pow((gyro_data.z-prev_gyro_z), 2));
-    //printf("gyro total: %f\n", gyro_total);
-    if (gyro_total > 5.0)
+    float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
+    if (gyro_total > 10.0)
     {
         return 1;
     }
@@ -233,7 +244,7 @@ int main(int argc, char *argv[]) {
 	float a_res, g_res, m_res;
 	data_t accel_data, gyro_data, mag_data;
 	int16_t temperature;
-    float pitch_angle, roll_angle, yaw_angle;
+    float pitch_angle, roll_angle, yaw_angle = 0;
     char *x_accel_message;
     char *y_accel_message;
     char *z_accel_message;
@@ -242,6 +253,7 @@ int main(int argc, char *argv[]) {
     int prev_posture = 0;
     float curr_gyro_x, curr_gyro_y, curr_gyro_z;
     float prev_gyro_x, prev_gyro_y, prev_gyro_z;
+    data_t zero_rate;
 	
 	//SOCKETS AND MESSAGES
 	int sockfd; //Socket descriptor
@@ -300,7 +312,6 @@ int main(int argc, char *argv[]) {
     prev_gyro_y = 0;
     prev_gyro_z = 0;
 	while(1) {
-        
 		accel_data = read_accel(accel, a_res);
 		gyro_data = read_gyro(gyro, g_res);
 		//mag_data = read_mag(mag, m_res);
@@ -310,18 +321,23 @@ int main(int argc, char *argv[]) {
 		curr_gyro_y = gyro_data.y;
 		curr_gyro_z = gyro_data.z;
 		
-        getAngles(accel_data, gyro_data, &pitch_angle, &roll_angle, &yaw_angle);
-        printf("is moving: %d\n", isMoving(gyro_data, prev_gyro_x, prev_gyro_y, prev_gyro_z) );
-        //printf("roll angle: %f ", roll_angle);
-        //printf("pitch angle: %f ", pitch_angle);
-        //printf("z vector: %f\n", accel_data.z);
+		if (count==0) //on startup, calibrate gyro data
+		{
+			//zero_rate = calibrateGyro(gyro_data);
+			zero_rate = calc_gyro_offset(gyro, g_res);
+		}
+		
+        getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
         
         
 		if (count == 3) {
             //send posture to cloud
             
-            if (isMoving(gyro_data, prev_gyro_x, prev_gyro_y, prev_gyro_z)==0)        //if patient is stationary, calculate new posture
-                curr_posture = getPosture(accel_data, pitch_angle, roll_angle);
+            if (isMoving(gyro_data)==0)        //if patient is stationary
+            {   
+            	//zero_rate = calibrateGyro(gyro_data);										  //calculate new zero rate	 
+                curr_posture = getPosture(accel_data, pitch_angle, roll_angle);		  //calculate new posture
+            }
             else
                 curr_posture = prev_posture;    //else just use the old posture
             if (curr_posture==UNDEFINED)
@@ -336,10 +352,6 @@ int main(int argc, char *argv[]) {
         	count = 0;
 
 		}
-        
-        prev_gyro_x = curr_gyro_x;
-        prev_gyro_y = curr_gyro_y;
-        prev_gyro_z = curr_gyro_z;
         
         char *posture_string;
         switch(curr_posture)
@@ -367,12 +379,21 @@ int main(int argc, char *argv[]) {
 		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
 		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
 		//printf("\tX: %f\t Y: %f\t Z: %f\t\n", gyro_data.x, gyro_data.y, gyro_data.z);
-		//printf("yaw angle: %f\n", yaw_angle);
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
 		//printf("\t%ld\n", temperature);
+		printf("is moving: %d ", isMoving(gyro_data) );
+        //printf("z gyro: %f ", curr_gyro_z);
+        //printf("roll angle: %f ", roll_angle);
+        //printf("pitch angle: %f ", pitch_angle);
+        printf("yaw angle: %f\n", yaw_angle);
 		
+		
+		//update for next iteration
+		prev_gyro_x = curr_gyro_x;
+        prev_gyro_y = curr_gyro_y;
+        prev_gyro_z = curr_gyro_z;
 		count++;
-		usleep(100000);
+		usleep(10000);
 
 	}
 
@@ -383,31 +404,31 @@ int main(int argc, char *argv[]) {
 
 
 
-			//store accel data in string
-            
-            /*
-			x_accel_message = construct_message(X_DIR, accel_data);
+	//store accel data in string
+	
+	/*
+	x_accel_message = construct_message(X_DIR, accel_data);
 
-		    //printf("%s\n", full_message_x);
+	//printf("%s\n", full_message_x);
 
-    		//send UDP message
-    		n = write(sockfd,x_accel_message,strlen(x_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
+	//send UDP message
+	n = write(sockfd,x_accel_message,strlen(x_accel_message)); //write to the socket
+	if (n < 0) 
+		error("ERROR writing to socket");
 
-        	y_accel_message = construct_message(Y_DIR, accel_data);
+	y_accel_message = construct_message(Y_DIR, accel_data);
 
-		    //printf("%s\n", full_message_y);		
+	//printf("%s\n", full_message_y);		
 
-    		n = write(sockfd,y_accel_message,strlen(y_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
+	n = write(sockfd,y_accel_message,strlen(y_accel_message)); //write to the socket
+	if (n < 0) 
+		error("ERROR writing to socket");
 
 
-            z_accel_message = construct_message(Z_DIR, accel_data);
-		    //printf("%s\n", full_message_z);
+	z_accel_message = construct_message(Z_DIR, accel_data);
+	//printf("%s\n", full_message_z);
 
-    		n = write(sockfd,z_accel_message,strlen(z_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-            */
+	n = write(sockfd,z_accel_message,strlen(z_accel_message)); //write to the socket
+	if (n < 0) 
+		error("ERROR writing to socket");
+	*/

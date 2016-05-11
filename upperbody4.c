@@ -23,7 +23,14 @@ const int LEFT = 3;
 const int RIGHT = 4;
 const int SITTING = 5;
 const int STANDING = 6;
+const int ROTATE_LOWER_LEFT = 7;
+const int ROTATE_LOWER_RIGHT = 8;
+const int ROTATE_UPPER_LEFT = 9;
+const int ROTATE_UPPER_LEFT = 10;
+const int ROTATE_ALL_RIGHT = 11;
+const int ROTATE_ALL_RIGHT = 12;
 const int UNDEFINED = -1; //when patient is moving or in unknown position
+
 int interval_posture = 0;
 int sequence[4];
 
@@ -262,11 +269,15 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture_upper) {
 
 }
 
-int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
+int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitch_angle, float *roll_angle, float *yaw_angle)
 {
     float accel_data_z;
     float accel_data_x;
     float accel_data_y;
+    float gyro_data_x, gyro_rate_x;
+    float gyro_data_y, gyro_rate_y;
+    float gyro_data_z, gyro_rate_z;
+    float gain = 90.0/58.0;
     
     accel_data_z = accel_data.z;
     if (accel_data_z > 1)
@@ -285,10 +296,28 @@ int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
         accel_data_x = 1;
     if (accel_data_x < -1)
         accel_data_x = -1;
-
     
+    
+        
     *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
     *roll_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
+
+	if (isMoving(gyro_data)==0)
+	{
+		gyro_rate_x = 0;
+		gyro_rate_y = 0;
+		gyro_rate_z = 0;
+	}
+	else
+	{
+		gyro_data_z = gyro_data.z;
+		gyro_rate_z = (gyro_data_z - zero_rate.z)*gain;
+
+	}
+	
+    *yaw_angle += gyro_rate_z*0.01;
+    
+    
     
     return 0;
 }
@@ -296,7 +325,7 @@ int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
 int isMoving(data_t gyro_data)
 {   
     float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 60.0)
+    if (gyro_total > 10.0)
     {
         return 1;
     }
@@ -465,14 +494,6 @@ int main(int argc, char *argv[]) {
     else 
         printf("Successfully connected to GUI!\n");
 */
-    sleep(2);
-    printf("Begin sending data in 3...");
-    sleep(1);
-    printf("2...");
-    sleep(1);
-    printf("1...");
-    sleep(1);
-    printf("starting!!\n");
 
     //first send message to lowerbody
     n = write(newsockfd2, "START", 6);
@@ -507,14 +528,12 @@ int main(int argc, char *argv[]) {
         
 		accel_data = read_accel(accel, a_res);
 		gyro_data = read_gyro(gyro, g_res);
-		//mag_data = read_mag(mag, m_res);
+		mag_data = read_mag(mag, m_res);
 		//temperature = read_temp(accel);
         
-        getAngles(accel_data, &pitch_angle, &roll_angle);
-        //printf("roll angle: %f ", roll_angle);
-        //printf("pitch angle: %f ", pitch_angle);
-        //printf("z vector: %f\n", accel_data.z);
-        
+        getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
+        printf("is moving: %f ", isMoving(gyro_data);
+        printf("yaw angle: %f\n", yaw_angle);
         
         
         
@@ -546,6 +565,7 @@ int main(int argc, char *argv[]) {
         char* full = "Total: ";
         char* temp_lol = "\n";
         char send_to_gui[5];
+        /*
         printf("%s", upper_body);
         printPostureString(curr_posture_upper);
         printf("%s", lower_body);
@@ -553,7 +573,7 @@ int main(int argc, char *argv[]) {
         printf("%s", full);
         printPostureString(curr_posture_full);
         printf("%s", temp_lol);
-
+		*/
         
 		if (count == 3) {
             //send posture to cloud
