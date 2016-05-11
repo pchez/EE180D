@@ -10,6 +10,9 @@
 #include <string.h>
 #include <math.h>
 #include <mraa/i2c.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <signal.h>
 #include "LSM9DS0.h"
 
 //globals
@@ -21,7 +24,8 @@ const int RIGHT = 4;
 const int SITTING = 5;
 const int STANDING = 6;
 const int UNDEFINED = -1; //when patient is moving or in unknown position
-
+int interval_posture = 0;
+int sequence[4];
 
 void error(char *msg)
 {
@@ -300,6 +304,30 @@ int isMoving(data_t gyro_data)
         return 0;
 }
 
+void determineFallRisk(int sequence0, int sequence1, int sequence2)
+{
+	if (sequence1==FACEUP && sequence2==SITTING)
+	{
+		printf("FALL RISK\n");
+	}
+}
+
+void getIntervalPosture()
+{
+	int i; 
+	for (i=0; i<2; i++)
+	{
+		sequence[i] = sequence[i+1];	//rotate the array
+	}
+	sequence[2] = interval_posture;		//save most recent posture into first element
+	printf("current sequence: %d %d %d %d \n", sequence[0], sequence[1], sequence[2]);
+	
+	determineFallRisk(sequence[0], sequence[1], sequence[2]);
+
+}
+
+
+
 int main(int argc, char *argv[]) {
 
 	/////VARIABLE DECLARATIONS/////
@@ -329,6 +357,10 @@ int main(int argc, char *argv[]) {
 	char posture_received[256];
 	char message[256];
 
+	//TIMING
+	struct itimerval it_val;
+	
+	
 	int count;
 
 	/////SENSOR INITIALIZATION AND SETUP/////
@@ -349,6 +381,7 @@ int main(int argc, char *argv[]) {
 
 
 	/////SOCKET SETUP FOR CLOUD/////
+	/*
     portno = 41234;
     //create socket
     sockfd = socket(AF_INET, SOCK_DGRAM, 0); //create a new socket
@@ -370,7 +403,7 @@ int main(int argc, char *argv[]) {
     //connect to server
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) //establish a connection to the server
         error("ERROR connecting");
-	
+	*/
 	
 	
 	
@@ -446,6 +479,28 @@ int main(int argc, char *argv[]) {
 	if (n<0)
 	   error("ERROR giving lower body the signal to start");
 
+
+	//initialize posture sequence array
+	sequence[0] = 0;
+	sequence[1] = 0;
+	sequence[2] = 0;
+	sequence[3] = 0;
+
+	//TIMER STUFF
+	if (signal(SIGALRM, getIntervalPosture)==SIG_ERR)
+	{
+		perror("Unable to catch SIGALRM");
+		exit(1);
+	}
+
+	it_val.it_value.tv_sec = 5;
+	it_val.it_interval = it_val.it_value;
+	if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
+	{
+		perror("error calling setitmer()");
+		exit(1);
+	}
+
     //read accel and gyro data 
     count = 0;
 	while(1) {
@@ -484,7 +539,7 @@ int main(int argc, char *argv[]) {
 		
 		////GET FULL BODY POSTURE////
 		curr_posture_full = getFullPosture(curr_posture_upper, atoi(posture_received));
-		
+		interval_posture = curr_posture_full;
 		
 		char* upper_body = "Upper body: ";
         char* lower_body = "Lower body: ";
@@ -504,7 +559,7 @@ int main(int argc, char *argv[]) {
             //send posture to cloud
             posture_message = construct_message(POS, accel_data, curr_posture_full);
         	
-        	
+        	/*
         	/////COMMUNICATE WITH CLOUD/////
         	n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
     		if (n < 0) 
@@ -512,11 +567,11 @@ int main(int argc, char *argv[]) {
     		
             /////COMMUNICATE WITH GUI//////
             memset(send_to_gui, 0, 5*sizeof(char));
-	    snprintf(send_to_gui, 4, "%d", curr_posture_full);
+	    	snprintf(send_to_gui, 4, "%d", curr_posture_full);
             n = write(sockfd3, send_to_gui, strlen(send_to_gui));
 	    if (n<0)
-		error("ERROR communicating to GUI");
-			
+			error("ERROR communicating to GUI");
+			*/
 			
 			
 			
@@ -559,7 +614,7 @@ int main(int argc, char *argv[]) {
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
 		//printf("\t%ld\n", temperature);
 		count++;
-		usleep(100000);
+		usleep(50000);
         //printf("%i", loopcounter);
 
 	}
