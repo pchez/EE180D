@@ -1,4 +1,5 @@
-//gcc -lmraa -lm -o orientation3 orientation3.c LSM9DS0.c
+//compile using gcc -lmraa -lm -o lowerbody4.exe lowerbody4.c LSM9DS0.c
+//don't forget to change IP address
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -38,10 +39,10 @@ char* concat(char *s1, char *s2)
     return result;
 }
 
-int getPosture(data_t accel_data, float pitch_angle, float yaw_angle)
+int getPosture(data_t accel_data, float pitch_angle, float roll_angle)
 {
     
-    float pitch_threshold_upright, yaw_threshold_left, yaw_threshold_right, pitch_threshold_faceup, yaw_threshold_faceup, pitch_threshold_facedown;
+    float pitch_threshold_upright, roll_threshold_left, roll_threshold_right, pitch_threshold_faceup, roll_threshold_faceup, pitch_threshold_facedown;
     int posture;
     float accel_data_x = accel_data.x;
     float accel_data_y = accel_data.y;
@@ -53,17 +54,17 @@ int getPosture(data_t accel_data, float pitch_angle, float yaw_angle)
     //patient upright | pitch between -45 to 45, z < -0.7
     pitch_threshold_upright = 45; 
     
-    //patient face up | pitch > 45, z > -0.5, yaw between -45 and 45
+    //patient face up | pitch > 45, z > -0.5, roll between -45 and 45
     pitch_threshold_faceup = 45;  
     
     //patient face down | pitch < -45
     pitch_threshold_facedown = -45; 
     
-    //patient turns to left side | yaw < -45, z vector > -0.3
-    yaw_threshold_left =  -45; 
+    //patient turns to left side | roll < -45, z vector > -0.3
+    roll_threshold_left =  -45; 
     
-    //patient turns to right side | yaw > 45, z vector > -0.3
-    yaw_threshold_right = 45;
+    //patient turns to right side | roll > 45, z vector > -0.3
+    roll_threshold_right = 45;
     
      
     //Very crude right now. monitor all axes, compare with set values
@@ -72,13 +73,13 @@ int getPosture(data_t accel_data, float pitch_angle, float yaw_angle)
     
     if (abs(pitch_angle) < pitch_threshold_upright && accel_data_z < -0.7)
         posture = UPRIGHT;
-    if (abs(yaw_angle) < yaw_threshold_right && accel_data_z > -0.5)
+    if (abs(roll_angle) < roll_threshold_right && accel_data_z > -0.5)
         posture = FACEUP;
-    if (pitch_angle < pitch_threshold_facedown && abs(yaw_angle) < yaw_threshold_right)
+    if (pitch_angle < pitch_threshold_facedown && abs(roll_angle) < roll_threshold_right)
         posture = FACEDOWN;
-    if (yaw_angle < yaw_threshold_left && accel_data_z > -0.3)
+    if (roll_angle < roll_threshold_left && accel_data_z > -0.3)
         posture = LEFT;
-    if (yaw_angle > yaw_threshold_right)
+    if (roll_angle > roll_threshold_right)
         posture = RIGHT;
     
     return posture;
@@ -108,6 +109,34 @@ typedef enum {
 
 } dir_t;
 
+
+void printPostureString(int curr_posture)
+{
+	char *posture_string;
+	switch(curr_posture)
+	{
+		case 0:
+			posture_string = "upright";
+			break;
+		case 1:
+			posture_string = "face up";
+			break;
+		case 2:
+			posture_string = "face down";
+			break;
+		case 3:
+			posture_string = "left";
+			break;
+		case 4:
+			posture_string = "right";
+			break;
+		default:
+			posture_string = "undefined";
+	}
+        
+    printf("current orientation: %s \n", posture_string);
+}
+
 char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
 
     char x_accel_value[30];
@@ -124,7 +153,6 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
     char *message4;
     char *message5;
     char *message6;
-    int posture;
 
     if (dir == X_DIR) {
 
@@ -158,27 +186,19 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
 
     }
     else if (dir == POS) {
-        
-        /*
-        if (curr_posture != UNDEFINED)
-            posture = curr_posture;
-        else
-            posture = prev_posture;
-        prev_posture = posture;
-        posture_int = posture;
-        */
-        snprintf(posture_value, 6, "%d", posture);
+
+        snprintf(posture_value, 6, "%d", curr_posture);
         message4 = concat(message1, "posture_int");
         message5 = concat(message4, message2);
         message6 = concat(message5, posture_value);
-        full_message_posture = concat(message6, message3);
+        full_message_posture = posture_value;
     }
     else error("ERROR: invalid call to construct_message\n");
 
 
 }
 
-int getAngles(data_t accel_data, float *pitch_angle, float *yaw_angle)
+int getAngles(data_t accel_data, float *pitch_angle, float *roll_angle)
 {
     float accel_data_z;
     float accel_data_x;
@@ -204,7 +224,7 @@ int getAngles(data_t accel_data, float *pitch_angle, float *yaw_angle)
 
     
     *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
-    *yaw_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
+    *roll_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
     
     return 0;
 }
@@ -229,13 +249,15 @@ int main(int argc, char *argv[]) {
 	float a_res, g_res, m_res;
 	data_t accel_data, gyro_data, mag_data;
 	int16_t temperature;
-    float pitch_angle, yaw_angle;
+    float pitch_angle, roll_angle;
     char *x_accel_message;
     char *y_accel_message;
     char *z_accel_message;
     char *posture_message;
     int curr_posture;
     int prev_posture = 0;
+//    int n;
+
 	
 	//SOCKETS AND MESSAGES
 	int sockfd; //Socket descriptor
@@ -245,7 +267,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serv_addr;
     struct hostent *server; //struct containing a bunch of info
 	char message[256];
-
+	char serv_message[256];
 	int count;
 
 	/////SENSOR INITIALIZATION AND SETUP
@@ -264,14 +286,14 @@ int main(int argc, char *argv[]) {
 	set_mag_ODR(mag, M_ODR_125);
 	m_res = calc_mag_res(M_SCALE_2GS);
 
-    portno = 41234;
+    portno = 2015;
 
     //create socket
-    sockfd = socket(AF_INET, SOCK_DGRAM, 0); //create a new socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0); //create a new socket
     if (sockfd < 0) 
         error("ERROR opening socket");
     
-    server = gethostbyname("127.0.0.1"); //takes a string like "www.yahoo.com", and returns a struct hostent which contains information, as IP address, address type, the length of the addresses...
+    server = gethostbyname("192.168.1.19"); //takes a string like "www.yahoo.com", and returns a struct hostent which contains information, as IP address, address type, the length of the addresses...
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
         exit(0);
@@ -283,10 +305,30 @@ int main(int argc, char *argv[]) {
     bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
     serv_addr.sin_port = htons(portno);
     
+    
     //connect to server
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) //establish a connection to the server
         error("ERROR connecting");
 
+
+/*
+	posture_message = "hello upper body";
+	n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
+	
+	
+	if (n < 0) 
+		error("ERROR writing to socket");
+	
+	
+	exit(1);
+*/	
+
+    //WAIT FOR THE OKAY BY THE SERVER//
+    memset(serv_message, 0, 256);
+    n = read(sockfd, serv_message, 256);    
+
+    if (strcmp(serv_message, "START") != 0)
+	error("strange response from server");
 
     //read accel and gyro data 
     count = 0;
@@ -297,22 +339,20 @@ int main(int argc, char *argv[]) {
 		//mag_data = read_mag(mag, m_res);
 		//temperature = read_temp(accel);
         
-        getAngles(accel_data, &pitch_angle, &yaw_angle);
+        getAngles(accel_data, &pitch_angle, &roll_angle);
         printf("is moving: %d\n", isMoving(gyro_data) );
-        //printf("yaw angle: %f ", yaw_angle);
+        //printf("roll angle: %f ", roll_angle);
         //printf("pitch angle: %f ", pitch_angle);
         //printf("z vector: %f\n", accel_data.z);
         
         
 		if (count == 3) {
-            //send posture to cloud
+            //send posture to main edison
             
             if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
-                curr_posture = getPosture(accel_data, pitch_angle, yaw_angle);
+                curr_posture = getPosture(accel_data, pitch_angle, roll_angle);
             else
-                curr_posture = prev_posture;    //else just use the old posture
-            if (curr_posture==UNDEFINED)
-                curr_posture = prev_posture;
+                curr_posture = UNDEFINED;    //else just use the undefined/transition case
             prev_posture = curr_posture; //set new value for prev posture
             
             posture_message = construct_message(POS, accel_data, curr_posture);
@@ -352,29 +392,8 @@ int main(int argc, char *argv[]) {
 
 		}
         
-        char *posture_string;
-        switch(curr_posture)
-        {
-            case 0:
-                posture_string = "upright";
-                break;
-            case 1:
-                posture_string = "face up";
-                break;
-            case 2:
-                posture_string = "face down";
-                break;
-            case 3:
-                posture_string = "left";
-                break;
-            case 4:
-                posture_string = "right";
-                break;
-            default:
-                posture_string = "undefined";
-        }
+        printPostureString(curr_posture);
         
-        printf("current orientation: %s \n", posture_string);
 		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
 		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", gyro_data.x, gyro_data.y, gyro_data.z);
