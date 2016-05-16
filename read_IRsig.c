@@ -11,6 +11,9 @@ int message[4];
 
 struct timeval tv_prev_sample;
 int preamble_count = 0;
+int message_count = 0; 
+int postamble_count = 0;
+
 int state = 0;  //0 = looking for preamble  1 = reading the message  2 = looking for postamble  3 = message received
 
 GPIO gpio = GPIO44;
@@ -56,9 +59,38 @@ void get_next_bit() {
 			
 		}
 		
-		else {
-			printf("state is 1, revert to 0\n");
+		else if (state == 1) {
+			//printf("state is 1, revert to 0\n");
+			message[message_count] = value;
+			message_count++;
+			
+			if (message_count == 4) {
+				state++;
+				message_count = 0;
+			}
+			//state = 0;
+		}
+		else if (state == 2) {
+		
+			if (value == 0) 
+				postamble_count++;
+			else {
+				postamble_count = 0;
+				state = 0;
+			}
+			
+			if (postamble_count == 4) {
+				state++;
+				printf("preamble recognized!\n");
+				postamble_count = 0;
+
+			}
+			
+		}
+		else  {
+			printf("message received: %d%d%d%d\n" , message[0], message[1], message[2], message[3]);
 			state = 0;
+			
 		}
 		
 	
