@@ -1,4 +1,4 @@
-//compile using gcc -lmraa -lm -o lowerbody4.exe lowerbody4.c LSM9DS0.c
+//gcc -lmraa -lm -o lowerbody4.exe lowerbody4.c LSM9DS0.c
 //don't forget to change IP address
 #include <stdio.h>
 #include <sys/types.h>
@@ -192,6 +192,7 @@ char* construct_message(dir_t dir, data_t accel_data, int curr_posture) {
         message5 = concat(message4, message2);
         message6 = concat(message5, posture_value);
         full_message_posture = posture_value;
+        return full_message_posture;
     }
     else error("ERROR: invalid call to construct_message\n");
 
@@ -225,9 +226,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
         accel_data_x = 1;
     if (accel_data_x < -1)
         accel_data_x = -1;
-    
-    
-        
+       
     *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
     *roll_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
 
@@ -240,14 +239,12 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 	else
 	{
 		gyro_data_z = gyro_data.z;
+		
 		gyro_rate_z = (gyro_data_z - zero_rate.z)*gain;
 
 	}
 	
     *yaw_angle += gyro_rate_z*0.01;
-    
-    
-    
     return 0;
 }
 
@@ -262,6 +259,7 @@ int isMoving(data_t gyro_data)
         return 0;
 }
 
+
 int main(int argc, char *argv[]) {
 
 	/////VARIABLE DECLARATIONS/////
@@ -269,13 +267,13 @@ int main(int argc, char *argv[]) {
 	//SENSORS
 	mraa_i2c_context accel, gyro, mag;
 	float a_res, g_res, m_res;
-	data_t accel_data, gyro_data, mag_data;
+	data_t accel_data, gyro_data, mag_data, zero_rate;
 	int16_t temperature;
-    float pitch_angle, roll_angle;
+    float pitch_angle, roll_angle, yaw_angle;
     char *x_accel_message;
     char *y_accel_message;
     char *z_accel_message;
-    char *posture_message;
+    char posture_message[20];
     int curr_posture;
     int prev_posture = 0;
 //    int n;
@@ -307,6 +305,8 @@ int main(int argc, char *argv[]) {
 	set_mag_scale(mag, M_SCALE_2GS);
 	set_mag_ODR(mag, M_ODR_125);
 	m_res = calc_mag_res(M_SCALE_2GS);
+	
+	zero_rate = calc_gyro_offset(gyro, g_res);
 
     portno = 2015;
 
@@ -333,17 +333,6 @@ int main(int argc, char *argv[]) {
         error("ERROR connecting");
 
 
-/*
-	posture_message = "hello upper body";
-	n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
-	
-	
-	if (n < 0) 
-		error("ERROR writing to socket");
-	
-	
-	exit(1);
-*/	
 
     //WAIT FOR THE OKAY BY THE SERVER//
     memset(serv_message, 0, 256);
@@ -362,8 +351,8 @@ int main(int argc, char *argv[]) {
 		//temperature = read_temp(accel);
         
         getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
-        printf("is moving: %f ", isMoving(gyro_data);
-        printf("yaw angle: %f\n", yaw_angle);
+        printf("is moving: %d ", isMoving(gyro_data));
+        printf("yaw angle: %f ", yaw_angle);
         
         
 		if (count == 3) {
@@ -374,11 +363,13 @@ int main(int argc, char *argv[]) {
             else
                 curr_posture = UNDEFINED;    //else just use the undefined/transition case
             prev_posture = curr_posture; //set new value for prev posture
-            
-            posture_message = construct_message(POS, accel_data, curr_posture);
+            snprintf(posture_message, 10, "%d,%f", curr_posture, yaw_angle);
+            //posture_message = construct_message(POS, accel_data, curr_posture);
+            printf("posture message: %s ", posture_message);
             n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
     		if (n < 0) 
         		error("ERROR writing to socket");
+
     
 			//store accel data in string
             
@@ -420,7 +411,7 @@ int main(int argc, char *argv[]) {
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
 		//printf("\t%ld\n", temperature);
 		count++;
-		usleep(100000);
+		usleep(10000);
 
 	}
 
