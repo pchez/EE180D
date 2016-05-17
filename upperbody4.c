@@ -1,4 +1,4 @@
-//compile using gcc -lmraa -lm -o upperbody4.exe upperbody4.c LSM9DS0.c
+//gcc -lmraa -lm -o upperbody4.exe upperbody4.c LSM9DS0.c
 //don't forget to change IP address
 #include <stdio.h>
 #include <sys/types.h>
@@ -26,13 +26,15 @@ const int STANDING = 6;
 const int ROTATE_LOWER_LEFT = 7;
 const int ROTATE_LOWER_RIGHT = 8;
 const int ROTATE_UPPER_LEFT = 9;
-const int ROTATE_UPPER_LEFT = 10;
-const int ROTATE_ALL_RIGHT = 11;
+const int ROTATE_UPPER_RIGHT = 10;
+const int ROTATE_ALL_LEFT = 11;
 const int ROTATE_ALL_RIGHT = 12;
 const int UNDEFINED = -1; //when patient is moving or in unknown position
 
-int interval_posture = 0;
-int sequence[4];
+int interval_posture, prev_posture_full, curr_posture_full = 0;
+int sequence[3];
+float prev_yaw_upper, curr_yaw_upper, prev_yaw_lower, curr_yaw_lower = 0.0;
+float upper_rotation, lower_rotation = 0.0;
 
 void error(char *msg)
 {
@@ -316,11 +318,20 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 	}
 	
     *yaw_angle += gyro_rate_z*0.01;
-    
-    
+    curr_yaw_upper = *yaw_angle;
     
     return 0;
 }
+
+void computeRotation(void)
+{
+	upper_rotation = curr_yaw_upper - prev_yaw_upper;
+	lower_rotation = curr_yaw_lower - prev_yaw_lower;
+	prev_yaw_upper = curr_yaw_upper;
+	prev_yaw_lower = curr_yaw_lower;
+	prev_posture_full = curr_posture_full;
+}
+
 
 int isMoving(data_t gyro_data)
 {   
@@ -337,25 +348,50 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 {
 	if (sequence1==FACEUP && sequence2==SITTING)
 	{
-		printf("FALL RISK\n");
+		if (abs(sequence0) > 50) 	//change this to reflect direction of rotation
+			printf("FALL RISK\n");
 	}
 }
 
 void getIntervalPosture()
 {
+	computeRotation();
+	printf("upper rotation: %f ", upper_rotation);
+	printf("lower rotation: %f ", lower_rotation);
+	printf("current full posture: %d ", curr_posture_full);
 	int i; 
 	for (i=0; i<2; i++)
 	{
 		sequence[i] = sequence[i+1];	//rotate the array
 	}
-	sequence[2] = interval_posture;		//save most recent posture into first element
-	printf("current sequence: %d %d %d %d \n", sequence[0], sequence[1], sequence[2]);
+	if (upper_rotation > 60 || upper_rotation < -60)	//refine
+	{
+		sequence[2] = upper_rotation; 	//save rotation value into first element
+		if (upper_rotation > 60 || upper_rotation < -60)	//fix
+		{
+			sequence[2] = upper_rotation; 	//save rotation value into first element
+		}
+	}
+	else if (lower_rotation > 60 || lower_rotation < -60)	//refine
+	{
+		sequence[2] = lower_rotation; 	
+	}
+	else
+		sequence[2] = interval_posture;		//save most recent posture into first element
+	printf("current sequence: %d %d %d \n", sequence[0], sequence[1], sequence[2]);
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
 
 }
 
 
+char* splitString(char* message)
+{
+	const char s[2] = ",";
+	char *token;
+	token = strtok(message, s);
+	return strtok(NULL, s);
+}
 
 int main(int argc, char *argv[]) {
 
@@ -366,13 +402,13 @@ int main(int argc, char *argv[]) {
 	float a_res, g_res, m_res;
 	data_t accel_data, gyro_data, mag_data;
 	int16_t temperature;
-    float pitch_angle, roll_angle;
+    float pitch_angle, roll_angle, yaw_angle = 0;
+    data_t zero_rate;
     char *x_accel_message;
     char *y_accel_message;
     char *z_accel_message;
     char *posture_message;
     int curr_posture_upper;
-    int curr_posture_full;
     int prev_posture_upper = 0;
 	
 	//SOCKETS AND MESSAGES
@@ -383,7 +419,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serv_addr, serv_addr2, cli_addr, gui_addr;
     struct hostent *server; //struct containing a bunch of info
     struct hostent *gui_server;
-	char posture_received[256];
+	char message_received[256];
 	char message[256];
 
 	//TIMING
@@ -407,6 +443,9 @@ int main(int argc, char *argv[]) {
 	set_mag_scale(mag, M_SCALE_2GS);
 	set_mag_ODR(mag, M_ODR_125);
 	m_res = calc_mag_res(M_SCALE_2GS);
+	
+	zero_rate = calc_gyro_offset(gyro, g_res);
+
 
 
 	/////SOCKET SETUP FOR CLOUD/////
@@ -505,23 +544,23 @@ int main(int argc, char *argv[]) {
 	sequence[0] = 0;
 	sequence[1] = 0;
 	sequence[2] = 0;
-	sequence[3] = 0;
+
 
 	//TIMER STUFF
-	if (signal(SIGALRM, getIntervalPosture)==SIG_ERR)
+	if (signal(SIGALRM, (void (*)(int))getIntervalPosture)==SIG_ERR)
 	{
 		perror("Unable to catch SIGALRM");
 		exit(1);
 	}
 
-	it_val.it_value.tv_sec = 5;
+	it_val.it_value.tv_sec = 3;
 	it_val.it_interval = it_val.it_value;
 	if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
 	{
 		perror("error calling setitmer()");
 		exit(1);
 	}
-
+	
     //read accel and gyro data 
     count = 0;
 	while(1) {
@@ -531,9 +570,11 @@ int main(int argc, char *argv[]) {
 		mag_data = read_mag(mag, m_res);
 		//temperature = read_temp(accel);
         
+        
+        ///GET OWN DATA
         getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
-        printf("is moving: %f ", isMoving(gyro_data);
-        printf("yaw angle: %f\n", yaw_angle);
+        //printf("upper moving: %d ", isMoving(gyro_data));
+        //printf("upper yaw angle: %f\n", yaw_angle);
         
         
         
@@ -541,12 +582,16 @@ int main(int argc, char *argv[]) {
 		//accept connection from lower body edison
 
 		//if connection is established then start communication
-		bzero(posture_received, 256);
-		n2 = read(newsockfd2, posture_received, 255); //get lower body posture
+		bzero(message_received, 256);
+		n2 = read(newsockfd2, message_received, 255); //get lower body posture
 		if (n2 < 0)
 			error("Error reading from lower body edison");
-
-	
+			
+		//split string, get lower body posture and current angle from lower body
+		char* angle_received = splitString(message_received); 
+		curr_yaw_lower = (float)atof(angle_received);
+		//printPostureString(atoi(message_received));
+		
 		
         ////GET UPPER BODY POSTURE////
 		if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
@@ -557,23 +602,15 @@ int main(int argc, char *argv[]) {
 		
 		
 		////GET FULL BODY POSTURE////
-		curr_posture_full = getFullPosture(curr_posture_upper, atoi(posture_received));
-		interval_posture = curr_posture_full;
+		curr_posture_full = getFullPosture(curr_posture_upper, atoi(message_received));
+		interval_posture = curr_posture_full;	//this is the variable to be stored into the current posture sequence (interval_posture is global)
+		if (prev_posture_full==curr_posture_full) //if the posture in the previous element of the sequence is the same as the current posture
+												  //update prev_posture_full in callback function
+		{
+			interval_posture = upper_rotation;
+		} 	
 		
-		char* upper_body = "Upper body: ";
-        char* lower_body = "Lower body: ";
-        char* full = "Total: ";
-        char* temp_lol = "\n";
-        char send_to_gui[5];
-        /*
-        printf("%s", upper_body);
-        printPostureString(curr_posture_upper);
-        printf("%s", lower_body);
-        printPostureString(atoi(posture_received));
-        printf("%s", full);
-        printPostureString(curr_posture_full);
-        printf("%s", temp_lol);
-		*/
+		
         
 		if (count == 3) {
             //send posture to cloud
@@ -634,7 +671,7 @@ int main(int argc, char *argv[]) {
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
 		//printf("\t%ld\n", temperature);
 		count++;
-		usleep(50000);
+		usleep(10000);
         //printf("%i", loopcounter);
 
 	}
