@@ -361,39 +361,41 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 
 void getIntervalPosture()
 {
+	int rotation_threshold = 50;
 	computeRotation();
 	printf("upper rotation: %f ", upper_rotation);
 	printf("lower rotation: %f ", lower_rotation);
 	printf("current full posture: %d ", curr_posture_full);
 	
-	if (curr_posture_full==UNDEFINED)
-		return;
+	if (curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
+	|| abs(lower_rotation)>rotation_threshold))
+	{	
+		int i; 
+		for (i=0; i<2; i++)
+		{
+			sequence[i] = sequence[i+1];	//rotate the array
+		}
 	
-	int i; 
-	for (i=0; i<2; i++)
-	{
-		sequence[i] = sequence[i+1];	//rotate the array
-	}
+		if (upper_rotation > rotation_threshold)				//upper body rotated right
+		{
+			sequence[2] = ROTATE_UPPER_RIGHT;
+			if (lower_rotation > rotation_threshold)			//lower body also rotated right
+				sequence[2] = ROTATE_ALL_RIGHT;
+		}
+		else if (upper_rotation < -rotation_threshold)			//upper body rotated left
+		{
+			sequence[2] = ROTATE_UPPER_LEFT;
+			if (lower_rotation < -rotation_threshold)			//lower body also rotated left
+				sequence[2] = ROTATE_ALL_LEFT;
+		}
+		else if (lower_rotation > rotation_threshold)			//only lower body rotated right
+			sequence[2] = ROTATE_LOWER_RIGHT;
+		else if (lower_rotation < -rotation_threshold)
+			sequence[2] = ROTATE_LOWER_LEFT;	//only lower body rotated left
+		else
+			sequence[2] = curr_posture_full;	//if no significant, save current posture
 	
-	if (upper_rotation > 60)				//upper body rotated right
-	{
-		sequence[2] = ROTATE_UPPER_RIGHT;
-		if (lower_rotation > 60)			//lower body also rotated right
-			sequence[2] = ROTATE_ALL_RIGHT;
 	}
-	else if (upper_rotation < -60)			//upper body rotated left
-	{
-		sequence[2] = ROTATE_UPPER_LEFT;
-		if (lower_rotation < -60)			//lower body also rotated left
-			sequence[2] = ROTATE_ALL_LEFT;
-	}
-	else if (lower_rotation > 60)			//only lower body rotated right
-		sequence[2] = ROTATE_LOWER_RIGHT;
-	else if (lower_rotation < -60)
-		sequence[2] = ROTATE_LOWER_LEFT;	//only lower body rotated left
-	else
-		sequence[2] = curr_posture_full;	//if no significant, save current posture
-	
 	printf("current sequence: %d %d %d \n", sequence[0], sequence[1], sequence[2]);
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
@@ -569,7 +571,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-	it_val.it_value.tv_sec = 3;
+	it_val.it_value.tv_sec = 5;
 	it_val.it_interval = it_val.it_value;
 	if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
 	{
@@ -589,8 +591,8 @@ int main(int argc, char *argv[]) {
         
         ///GET OWN DATA
         getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
-        printf("upper moving: %d ", isMoving(gyro_data));
-        printf("upper yaw angle: %f\n", yaw_angle);
+        //printf("upper moving: %d ", isMoving(gyro_data));
+        //printf("upper yaw angle: %f\n", yaw_angle);
         
         
         
