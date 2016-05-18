@@ -35,6 +35,7 @@ int interval_posture, prev_posture_full, curr_posture_full = 0;
 int sequence[3];
 float prev_yaw_upper, curr_yaw_upper, prev_yaw_lower, curr_yaw_lower = 0.0;
 float upper_rotation, lower_rotation = 0.0;
+int fall_risk = 0;
 
 void error(char *msg)
 {
@@ -93,9 +94,9 @@ int getPosture(data_t accel_data, float pitch_angle, float roll_angle)
     if (pitch_angle < pitch_threshold_facedown && abs(roll_angle) < roll_threshold_right)
         posture = FACEDOWN;
     if (roll_angle < roll_threshold_left && accel_data_z > -0.3)
-        posture = LEFT;
-    if (roll_angle > roll_threshold_right)
         posture = RIGHT;
+    if (roll_angle > roll_threshold_right)
+        posture = LEFT;
     
     return posture;
     
@@ -279,7 +280,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     float gyro_data_x, gyro_rate_x;
     float gyro_data_y, gyro_rate_y;
     float gyro_data_z, gyro_rate_z;
-    float gain = 90.0/58.0;
+    float gain = 90.0/15.0;
     
     accel_data_z = accel_data.z;
     if (accel_data_z > 1)
@@ -301,8 +302,8 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     
     
         
-    *pitch_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
-    *roll_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
+    *roll_angle = acos(accel_data_y/-1)*180/M_PI-90.0;
+    *pitch_angle = acos(accel_data_x/-1)*180/M_PI-90.0;
 
 	if (isMoving(gyro_data)==0)
 	{
@@ -346,10 +347,15 @@ int isMoving(data_t gyro_data)
 
 void determineFallRisk(int sequence0, int sequence1, int sequence2)
 {
-	if (sequence1==FACEUP && sequence2==SITTING)
+	if ((sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_LOWER_LEFT)
+	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_ALL_LEFT)
+	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_LOWER_RIGHT)
+	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_ALL_RIGHT)
+	|| (sequence1==LEFT && sequence2==SITTING)
+	|| (sequence1==RIGHT && sequence2==SITTING))
 	{
-		if (abs(sequence0) > 50) 	//change this to reflect direction of rotation
-			printf("FALL RISK\n");
+		fall_risk = 1;
+		printf("FALL RISK\n");
 	}
 }
 
@@ -364,20 +370,26 @@ void getIntervalPosture()
 	{
 		sequence[i] = sequence[i+1];	//rotate the array
 	}
-	if (upper_rotation > 60 || upper_rotation < -60)	//refine
+	
+	if (upper_rotation > 60)				//upper body rotated right
 	{
-		sequence[2] = upper_rotation; 	//save rotation value into first element
-		if (upper_rotation > 60 || upper_rotation < -60)	//fix
-		{
-			sequence[2] = upper_rotation; 	//save rotation value into first element
-		}
+		sequence[2] = ROTATE_UPPER_RIGHT;
+		if (lower_rotation > 60)			//lower body also rotated right
+			sequence[2] = ROTATE_ALL_RIGHT;
 	}
-	else if (lower_rotation > 60 || lower_rotation < -60)	//refine
+	else if (upper_rotation < -60)			//upper body rotated left
 	{
-		sequence[2] = lower_rotation; 	
+		sequence[2] = ROTATE_UPPER_LEFT;
+		if (lower_rotation < -60)			//lower body also rotated left
+			sequence[2] = ROTATE_ALL_LEFT;
 	}
+	else if (lower_rotation > 60)			//only lower body rotated right
+		sequence[2] = ROTATE_LOWER_RIGHT;
+	else if (lower_rotation < -60)
+		sequence[2] = ROTATE_LOWER_LEFT;	//only lower body rotated left
 	else
-		sequence[2] = interval_posture;		//save most recent posture into first element
+		sequence[2] = curr_posture_full;	//if no significant, save current posture
+	
 	printf("current sequence: %d %d %d \n", sequence[0], sequence[1], sequence[2]);
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
