@@ -352,11 +352,23 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_LOWER_RIGHT)
 	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_ALL_RIGHT)
 	|| (sequence1==LEFT && sequence2==SITTING)
-	|| (sequence1==RIGHT && sequence2==SITTING))
+	|| (sequence1==RIGHT && sequence2==SITTING)
+	|| sequence2==STANDING)
 	{
 		fall_risk = 1;
 		printf("FALL RISK\n");
 	}
+}
+
+void tryToResetFallRisk(int degrees )
+{
+	int prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
+	int prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
+	
+	computeRotation();	//get new rotation (if any)
+	printf("\nTrying to reset fall risk signal...\n");
+	printf("Patient rotated %d degrees
+	
 }
 
 void getIntervalPosture()
@@ -367,8 +379,13 @@ void getIntervalPosture()
 	printf("lower rotation: %f ", lower_rotation);
 	printf("current full posture: %d ", curr_posture_full);
 	
-	if (curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
-	|| abs(lower_rotation)>rotation_threshold))
+	
+	if (fall_risk==1)
+	{
+		tryToResetFallRisk();
+	}
+	if (fall_risk==0 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
+	|| abs(lower_rotation)>rotation_threshold)))			//if patient stationary or rotation > 50
 	{	
 		int i; 
 		for (i=0; i<2; i++)
@@ -597,7 +614,6 @@ int main(int argc, char *argv[]) {
         
         
 		////COMMUNICATE WITH LOWER BODY EDISON/////
-		//accept connection from lower body edison
 
 		//if connection is established then start communication
 		bzero(message_received, 256);
@@ -631,55 +647,18 @@ int main(int argc, char *argv[]) {
 		
         
 		if (count == 3) {
-            //send posture to cloud
             posture_message = construct_message(POS, accel_data, curr_posture_full);
         	
-        	/*
-        	/////COMMUNICATE WITH CLOUD/////
-        	n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to cloud");
-    		
+    		/*
             /////COMMUNICATE WITH GUI//////
             memset(send_to_gui, 0, 5*sizeof(char));
 	    	snprintf(send_to_gui, 4, "%d", curr_posture_full);
             n = write(sockfd3, send_to_gui, strlen(send_to_gui));
-	    if (n<0)
-			error("ERROR communicating to GUI");
+			if (n<0)
+				error("ERROR communicating to GUI");
 			*/
-			
-			
-			
-			//store accel data in string
-            
-            /*
-			x_accel_message = construct_message(X_DIR, accel_data);
-
-		    //printf("%s\n", full_message_x);
-
-    		//send UDP message
-    		n = write(sockfd,x_accel_message,strlen(x_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-
-        	y_accel_message = construct_message(Y_DIR, accel_data);
-
-		    //printf("%s\n", full_message_y);		
-
-    		n = write(sockfd,y_accel_message,strlen(y_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-
-
-            z_accel_message = construct_message(Z_DIR, accel_data);
-		    //printf("%s\n", full_message_z);
-
-    		n = write(sockfd,z_accel_message,strlen(z_accel_message)); //write to the socket
-    		if (n < 0) 
-        		error("ERROR writing to socket");
-            */
         	count = 0;
-
+			
 		}
         
         
