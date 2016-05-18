@@ -14,6 +14,10 @@
 #include <unistd.h>
 #include <signal.h>
 #include "LSM9DS0.h"
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/mman.h>
+#include <errno.h>
 
 //globals
 const int UPRIGHT = 0;
@@ -324,6 +328,35 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     return 0;
 }
 
+void check_shared_memory() {
+
+	char id[5];
+	memset(id, 0, sizeof(char) * 5);
+	int fd;
+	int n;
+
+	memset(id, 0, sizeof(char) * 5);
+		
+	if ((fd = open("./id", O_RDWR)) == -1) {
+   		fprintf(stderr, "error opening file\n");
+   		exit(1);
+   	}
+				
+	if ((n = read(fd, id, 4)) == -1) {
+		fprintf(stderr, "error with reading: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	if (n == 0)
+		printf("ID: 0\n");
+			
+	else  {
+		printf("ID: %s\n", id);
+	}		
+
+	close(fd);
+
+}
 void computeRotation(void)
 {
 	upper_rotation = curr_yaw_upper - prev_yaw_upper;
@@ -416,6 +449,8 @@ void getIntervalPosture()
 	printf("current sequence: %d %d %d \n", sequence[0], sequence[1], sequence[2]);
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
+	
+	check_shared_memory();
 
 }
 
@@ -431,6 +466,7 @@ char* splitString(char* message)
 int main(int argc, char *argv[]) {
 
 	/////VARIABLE DECLARATIONS/////
+	
 
 	//SENSORS
 	mraa_i2c_context accel, gyro, mag;
@@ -456,6 +492,17 @@ int main(int argc, char *argv[]) {
     struct hostent *gui_server;
 	char message_received[256];
 	char message[256];
+	
+	int fd;
+	caddr_t result; 
+	if ((fd = open("./id", O_RDWR | O_TRUNC)) == -1)  {
+   		fprintf(stderr, "error opening file");
+   		exit(1); 	
+   	}
+
+	result = mmap(0, 10, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0); 
+	
+	(void) close(fd);
 
 	//TIMING
 	struct itimerval it_val;
@@ -507,6 +554,7 @@ int main(int argc, char *argv[]) {
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) //establish a connection to the server
         error("ERROR connecting");
 	*/
+	
 	
 	
 	
