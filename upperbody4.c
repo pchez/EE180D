@@ -337,7 +337,7 @@ void computeRotation(void)
 int isMoving(data_t gyro_data)
 {   
     float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 10.0)
+    if (gyro_total > 20.0)
     {
         return 1;
     }
@@ -365,6 +365,10 @@ void getIntervalPosture()
 	printf("upper rotation: %f ", upper_rotation);
 	printf("lower rotation: %f ", lower_rotation);
 	printf("current full posture: %d ", curr_posture_full);
+	
+	if (curr_posture_full==UNDEFINED)
+		return;
+	
 	int i; 
 	for (i=0; i<2; i++)
 	{
@@ -585,8 +589,8 @@ int main(int argc, char *argv[]) {
         
         ///GET OWN DATA
         getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
-        //printf("upper moving: %d ", isMoving(gyro_data));
-        //printf("upper yaw angle: %f\n", yaw_angle);
+        printf("upper moving: %d ", isMoving(gyro_data));
+        printf("upper yaw angle: %f\n", yaw_angle);
         
         
         
