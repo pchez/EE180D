@@ -251,7 +251,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 int isMoving(data_t gyro_data)
 {   
     float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 10.0)
+    if (gyro_total > 20.0)
     {
         return 1;
     }
@@ -315,7 +315,7 @@ int main(int argc, char *argv[]) {
     if (sockfd < 0) 
         error("ERROR opening socket");
     
-    server = gethostbyname("192.168.1.19"); //takes a string like "www.yahoo.com", and returns a struct hostent which contains information, as IP address, address type, the length of the addresses...
+    server = gethostbyname("131.179.24.167"); //takes a string like "www.yahoo.com", and returns a struct hostent which contains information, as IP address, address type, the length of the addresses...
     if (server == NULL) {
         fprintf(stderr,"ERROR, no such host\n");
         exit(0);
