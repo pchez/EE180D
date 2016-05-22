@@ -1,41 +1,4 @@
-//gcc -lmraa -lm -o upperbody4.exe upperbody4.c LSM9DS0.c
-//don't forget to change IP address
-#include <stdio.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <string.h>
-#include <math.h>
-#include <mraa/i2c.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <signal.h>
-#include "LSM9DS0.h"
-
-//globals
-const int UPRIGHT = 0;
-const int FACEUP = 1;
-const int FACEDOWN = 2;
-const int LEFT = 3;
-const int RIGHT = 4;
-const int SITTING = 5;
-const int STANDING = 6;
-const int ROTATE_LOWER_LEFT = 7;
-const int ROTATE_LOWER_RIGHT = 8;
-const int ROTATE_UPPER_LEFT = 9;
-const int ROTATE_UPPER_RIGHT = 10;
-const int ROTATE_ALL_LEFT = 11;
-const int ROTATE_ALL_RIGHT = 12;
-const int UNDEFINED = -1; //when patient is moving or in unknown position
-
-int interval_posture, prev_posture_full, curr_posture_full = 0;
-int sequence[3];
-float prev_yaw_upper, curr_yaw_upper, prev_yaw_lower, curr_yaw_lower = 0.0;
-float upper_rotation, lower_rotation = 0.0;
-int fall_risk = 0;
+#include "upperbody.h"
 
 void error(char *msg)
 {
@@ -324,6 +287,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     return 0;
 }
 
+
 void computeRotation(void)
 {
 	upper_rotation = curr_yaw_upper - prev_yaw_upper;
@@ -360,33 +324,42 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 	}
 }
 
+
 void tryToResetFallRisk(int degrees )
 {
-	int prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
-	int prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
+	float prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
+	float prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
+	float rotate_back_threshold = 10;
 	
 	computeRotation();	//get new rotation (if any)
 	printf("\nTrying to reset fall risk signal...\n");
-	printf("Patient rotated %d degrees
+	printf("Upper rotated %d degrees", upper_rotation);
+	printf("Lower rotated %d degrees", lower_rotation);
+	if (abs(lower_rotation - prev_lower_rotation) < rotate_back_threshold)
+	{
+		fall_risk = 0;
+		printf("Patient rotated back successfully");
+	}
+	printf("\n");
 	
 }
 
 void getIntervalPosture()
 {
 	int rotation_threshold = 50;
-	computeRotation();
-	printf("upper rotation: %f ", upper_rotation);
-	printf("lower rotation: %f ", lower_rotation);
-	printf("current full posture: %d ", curr_posture_full);
 	
 	
 	if (fall_risk==1)
 	{
-		tryToResetFallRisk();
+		tryToResetFallRisk(curr_posture_full);
 	}
-	if (fall_risk==0 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
+	else if (fall_risk==0 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
 	|| abs(lower_rotation)>rotation_threshold)))			//if patient stationary or rotation > 50
 	{	
+		computeRotation();
+		printf("upper rotation: %f ", upper_rotation);
+		printf("lower rotation: %f ", lower_rotation);
+		printf("current full posture: %d ", curr_posture_full);
 		int i; 
 		for (i=0; i<2; i++)
 		{
@@ -410,12 +383,13 @@ void getIntervalPosture()
 		else if (lower_rotation < -rotation_threshold)
 			sequence[2] = ROTATE_LOWER_LEFT;	//only lower body rotated left
 		else
-			sequence[2] = curr_posture_full;	//if no significant, save current posture
+			sequence[2] = curr_posture_full;	//if no significant rotation, save current posture
 	
 	}
 	printf("current sequence: %d %d %d \n", sequence[0], sequence[1], sequence[2]);
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
+	
 
 }
 
@@ -431,6 +405,7 @@ char* splitString(char* message)
 int main(int argc, char *argv[]) {
 
 	/////VARIABLE DECLARATIONS/////
+	
 
 	//SENSORS
 	mraa_i2c_context accel, gyro, mag;
@@ -456,6 +431,19 @@ int main(int argc, char *argv[]) {
     struct hostent *gui_server;
 	char message_received[256];
 	char message[256];
+	
+	/*
+	int fd;
+	caddr_t result; 
+	if ((fd = open("./id", O_RDWR | O_TRUNC)) == -1)  {
+   		fprintf(stderr, "error opening file");
+   		exit(1); 	
+   	}
+
+	result = mmap(0, 10, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0); 
+	
+	(void) close(fd);
+*/
 
 	//TIMING
 	struct itimerval it_val;
@@ -507,6 +495,7 @@ int main(int argc, char *argv[]) {
     if (connect(sockfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0) //establish a connection to the server
         error("ERROR connecting");
 	*/
+	
 	
 	
 	
@@ -588,7 +577,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 
-	it_val.it_value.tv_sec = 5;
+	it_val.it_value.tv_sec = 3;
 	it_val.it_interval = it_val.it_value;
 	if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
 	{
