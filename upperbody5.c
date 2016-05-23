@@ -294,7 +294,6 @@ void computeRotation(void)
 	lower_rotation = curr_yaw_lower - prev_yaw_lower;
 	prev_yaw_upper = curr_yaw_upper;
 	prev_yaw_lower = curr_yaw_lower;
-	prev_posture_full = curr_posture_full;
 }
 
 
@@ -311,10 +310,10 @@ int isMoving(data_t gyro_data)
 
 void determineFallRisk(int sequence0, int sequence1, int sequence2)
 {
-	if ((sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_LOWER_LEFT)
-	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_ALL_LEFT)
-	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_LOWER_RIGHT)
-	|| (sequence0==FACEUP && sequence1==SITTING && sequence2==ROTATE_ALL_RIGHT)
+	if ((sequence1==SITTING && sequence2==ROTATE_LOWER_LEFT)
+	|| (sequence1==SITTING && sequence2==ROTATE_ALL_LEFT)
+	|| (sequence1==SITTING && sequence2==ROTATE_LOWER_RIGHT)
+	|| (sequence1==SITTING && sequence2==ROTATE_ALL_RIGHT)
 	|| (sequence1==LEFT && sequence2==SITTING)
 	|| (sequence1==RIGHT && sequence2==SITTING)
 	|| sequence2==STANDING)
@@ -325,38 +324,68 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 }
 
 
-void tryToResetFallRisk(int degrees )
+void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 {
-	float prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
-	float prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
-	float rotate_back_threshold = 10;
-	
-	computeRotation();	//get new rotation (if any)
-	printf("\nTrying to reset fall risk signal...\n");
-	printf("Upper rotated %d degrees", upper_rotation);
-	printf("Lower rotated %d degrees", lower_rotation);
-	if (abs(lower_rotation - prev_lower_rotation) < rotate_back_threshold)
+	float rotate_back_threshold = 50;
+	printf("Trying to reset fall risk signal...");
+	/*
+	if (sequence[2]==ROTATE_UPPER_LEFT || sequence[2]==ROTATE_UPPER_RIGHT
+	|| sequence[2]==ROTATE_ALL_LEFT || sequence[2]==ROTATE_ALL_RIGHT)
 	{
-		fall_risk = 0;
-		printf("Patient rotated back successfully");
+		if (abs(lower_rotation - prev_lower_rotation) < rotate_back_threshold)
+		{
+			fall_risk = 0;
+			printf("Patient rotated back successfully");
+			return 0;
+		}
+	}
+	*/
+	if (curr_posture_full==SITTING)	//if patient IS sitting, waiting for patient to rotate back
+	{
+		if (abs(lower_rotation) > rotate_back_threshold)
+		{
+			printf("Patient rotated back");				
+			fall_risk = 0;
+			
+		}
+	}
+	if (prev_posture_full==SITTING) //if patient WAS sitting, see if patient lies down
+	{
+		if (curr_posture_full==LEFT || curr_posture_full==RIGHT)
+		{
+			printf("Patient laid down on side");
+			fall_risk = 0;
+			
+		}
+	}
+	if (prev_posture_full==STANDING)
+	{
+		if (curr_posture_full==SITTING)
+		{
+			printf("Patient sat down");
+			fall_risk = 1;
+		}
 	}
 	printf("\n");
-	
 }
 
 void getIntervalPosture()
 {
 	int rotation_threshold = 50;
+	int fall_reset_status = 0;
+	float prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
+	float prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
 	
+	computeRotation();	//get new rotation
 	
 	if (fall_risk==1)
 	{
-		tryToResetFallRisk(curr_posture_full);
+		tryToResetFallRisk(prev_upper_rotation, prev_lower_rotation);
+		//if successfully reset, will execute rest of this function
 	}
-	else if (fall_risk==0 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
+	if (fall_risk==0 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
 	|| abs(lower_rotation)>rotation_threshold)))			//if patient stationary or rotation > 50
 	{	
-		computeRotation();
 		printf("upper rotation: %f ", upper_rotation);
 		printf("lower rotation: %f ", lower_rotation);
 		printf("current full posture: %d ", curr_posture_full);
@@ -389,7 +418,7 @@ void getIntervalPosture()
 	printf("current sequence: %d %d %d \n", sequence[0], sequence[1], sequence[2]);
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
-	
+	prev_posture_full = curr_posture_full;
 
 }
 
@@ -627,11 +656,7 @@ int main(int argc, char *argv[]) {
 		////GET FULL BODY POSTURE////
 		curr_posture_full = getFullPosture(curr_posture_upper, atoi(message_received));
 		interval_posture = curr_posture_full;	//this is the variable to be stored into the current posture sequence (interval_posture is global)
-		if (prev_posture_full==curr_posture_full) //if the posture in the previous element of the sequence is the same as the current posture
-												  //update prev_posture_full in callback function
-		{
-			interval_posture = upper_rotation;
-		} 	
+		
 		
 		
         
@@ -650,15 +675,8 @@ int main(int argc, char *argv[]) {
 			
 		}
         
-        
-		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
-		//printf("X: %f\t Y: %f\t Z: %f\n", accel_data.x, accel_data.y, accel_data.z);
-		//printf("\tX: %f\t Y: %f\t Z: %f\t||", gyro_data.x, gyro_data.y, gyro_data.z);
-		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
-		//printf("\t%ld\n", temperature);
 		count++;
 		usleep(10000);
-        //printf("%i", loopcounter);
 
 	}
 
