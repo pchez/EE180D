@@ -434,7 +434,7 @@ data_t calc_gyro_offset(mraa_i2c_context gyro, float g_res)
 	offset = read_gyro(gyro, g_res);
 	printf("Calculating the offsets...\n");
 	
-	for (i=2; i<102; i++) {
+	for (i=2; i<52; i++) {
 		new_gyro_data = read_gyro(gyro, g_res);
 		offset.x = ((i-1)/(float)i)*offset.x + new_gyro_data.x/i;
 		offset.y = ((i-1)/(float)i)*offset.y + new_gyro_data.y/i;
