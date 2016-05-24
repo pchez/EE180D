@@ -287,6 +287,47 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     return 0;
 }
 
+char* create_packet(int posture, int fall_risk, char* id) {
+                                                         
+        char* pkt;                                                              
+        memset(pkt, 0, 20*sizeof(char));                                        
+                     
+        snprintf(pkt, 20, "D %d %d %s E", posture, fall_risk, id);
+                                          
+        return pkt;              
+                                                                                
+}  
+
+void check_shared_memory() {
+ 
+	int fd;
+	int n;
+
+	memset(id, 0, sizeof(char) * 5);
+		
+	if ((fd = open("./id", O_RDWR)) == -1) {
+   		fprintf(stderr, "error opening file\n");
+   		exit(1);
+   	}
+				
+	if ((n = read(fd, id, 4)) == -1) {
+		fprintf(stderr, "error with reading: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	if (n == 0) {
+		printf("ID: 0\n");
+		sprintf(id, "0000");
+		//printf("hello in check_shared_mem\n");
+	}		
+	else  {
+		printf("ID: %s\n", id);
+	}		
+
+	close(fd);
+
+}
+
 
 void computeRotation(void)
 {
@@ -320,7 +361,9 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 	{
 		fall_risk = 1;
 		printf("FALL RISK\n");
+		
 	}
+	check_shared_memory();
 }
 
 
@@ -460,8 +503,9 @@ int main(int argc, char *argv[]) {
     struct hostent *gui_server;
 	char message_received[256];
 	char message[256];
+	char* pkt;
 	
-	/*
+	
 	int fd;
 	caddr_t result; 
 	if ((fd = open("./id", O_RDWR | O_TRUNC)) == -1)  {
@@ -472,7 +516,7 @@ int main(int argc, char *argv[]) {
 	result = mmap(0, 10, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0); 
 	
 	(void) close(fd);
-*/
+
 
 	//TIMING
 	struct itimerval it_val;
@@ -561,7 +605,7 @@ int main(int argc, char *argv[]) {
 	}
 
     ////SETUP FOR GUI CONNECTION////
-    /*
+    
     printf("setting up connection to gui... ");
     sleep(2);
     portno3 = 12000;
@@ -570,7 +614,7 @@ int main(int argc, char *argv[]) {
     if (sockfd3 < 0)
         error("ERROR opening sockfd3");
 
-    gui_server = gethostbyname("192.168.1.24");
+    gui_server = gethostbyname("192.168.1.20");
     if (gui_server == NULL) {
         error("ERROR, no such host\n");
         exit(0);
@@ -585,8 +629,8 @@ int main(int argc, char *argv[]) {
         error("ERROR connecting to gui");
     else 
         printf("Successfully connected to GUI!\n");
-*/
 
+	
     //first send message to lowerbody
     n = write(newsockfd2, "START", 6);
 	if (n<0)
@@ -605,14 +649,19 @@ int main(int argc, char *argv[]) {
 		perror("Unable to catch SIGALRM");
 		exit(1);
 	}
+	
+	
 
 	it_val.it_value.tv_sec = 3;
+	it_val.it_value.tv_usec = 0;
 	it_val.it_interval = it_val.it_value;
 	if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
 	{
 		perror("error calling setitmer()");
 		exit(1);
 	}
+	
+	printf("hello\n");
 	
     //read accel and gyro data 
     count = 0;
@@ -663,14 +712,25 @@ int main(int argc, char *argv[]) {
 		if (count == 3) {
             posture_message = construct_message(POS, accel_data, curr_posture_full);
         	
-    		/*
+        	printf("hello\n");
+        	pkt = create_packet(curr_posture_full, fall_risk, id);
+        	
+    		
             /////COMMUNICATE WITH GUI//////
-            memset(send_to_gui, 0, 5*sizeof(char));
-	    	snprintf(send_to_gui, 4, "%d", curr_posture_full);
-            n = write(sockfd3, send_to_gui, strlen(send_to_gui));
+            //memset(send_to_gui, 0, 5*sizeof(char));
+	    	//snprintf(send_to_gui, 4, "%d", curr_posture_full);
+            //n = write(sockfd3, send_to_gui, strlen(send_to_gui));
+            printf("about to send %s\n", pkt);
+            n = write(sockfd3, pkt, strlen(pkt));
+            printf("hello\n");
+
 			if (n<0)
 				error("ERROR communicating to GUI");
-			*/
+			
+			n = read(sockfd3,message_received,255); //read from the socket                         
+   			 if (n < 0)                                                                  
+        		 error("ERROR reading from socket"); 
+			printf("%s\n");
         	count = 0;
 			
 		}
