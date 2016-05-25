@@ -288,12 +288,11 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 }
 
 char* create_packet(int posture, int fall_risk, char* id) {
-                                                         
-        char* pkt;                                                              
+              
+        char* pkt = malloc(20*sizeof(char));  
         memset(pkt, 0, 20*sizeof(char));                                        
-                     
-        snprintf(pkt, 20, "D %d %d %s E", posture, fall_risk, id);
-                                          
+
+        snprintf(pkt, 19, "D %d %d %s E", posture, fall_risk, id);
         return pkt;              
                                                                                 
 }  
@@ -414,6 +413,7 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 
 void getIntervalPosture()
 {
+	printf("in getIntervalPosture\n");
 	int rotation_threshold = 50;
 	int fall_reset_status = 0;
 	float prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
@@ -506,6 +506,8 @@ int main(int argc, char *argv[]) {
 	char* pkt;
 	char* guiIP;
 	
+	memset(id, 0, sizeof(char) * 5);
+	sprintf(id, "0000");
 	
 	int fd;
 	caddr_t result; 
@@ -665,7 +667,6 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	
-	printf("hello\n");
 	
     //read accel and gyro data 
     count = 0;
@@ -714,7 +715,7 @@ int main(int argc, char *argv[]) {
 		if (count == 3) {
             posture_message = construct_message(POS, accel_data, curr_posture_full);
         	
-        	printf("hello\n"); //WHY DOES DELETING THIS CREATE AN IMMEDIATE SEG FAULT?????
+        	//printf("hello\n"); //WHY DOES DELETING THIS CREATE AN IMMEDIATE SEG FAULT?????
         	pkt = create_packet(curr_posture_full, fall_risk, id);
         	
         	printf("upper: %d ", curr_posture_upper);
