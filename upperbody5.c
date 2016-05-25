@@ -338,10 +338,10 @@ void computeRotation(void)
 }
 
 
-int isMoving(data_t gyro_data)
+int isMoving(data_t gyro_data, data_t zero_rate)
 {   
-    float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 20.0)
+    float gyro_total = sqrt(pow(gyro_data.x-zero_rate.x, 2) + pow(gyro_data.y-zero_rate.y, 2) + pow(gyro_data.z-zero_rate.z, 2));
+    if (gyro_total > 10.0)
     {
         return 1;
     }
@@ -504,6 +504,7 @@ int main(int argc, char *argv[]) {
 	char message_received[256];
 	char message[256];
 	char* pkt;
+	char* guiIP;
 	
 	
 	int fd;
@@ -613,8 +614,11 @@ int main(int argc, char *argv[]) {
     sockfd3= socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd3 < 0)
         error("ERROR opening sockfd3");
-
-    gui_server = gethostbyname("192.168.1.20");
+	if (argc==2)
+		guiIP = argv[1];
+	else
+		guiIP = "192.168.1.7";
+    gui_server = gethostbyname(guiIP);
     if (gui_server == NULL) {
         error("ERROR, no such host\n");
         exit(0);
@@ -675,7 +679,7 @@ int main(int argc, char *argv[]) {
         
         ///GET OWN DATA
         getAngles(accel_data, gyro_data, zero_rate, &pitch_angle, &roll_angle, &yaw_angle);
-        //printf("upper moving: %d ", isMoving(gyro_data));
+        //printf("upper moving: %d ", isMoving(gyro_data, zero_rate));
         //printf("upper yaw angle: %f\n", yaw_angle);
         
         
@@ -695,7 +699,7 @@ int main(int argc, char *argv[]) {
 		
 		
         ////GET UPPER BODY POSTURE////
-		if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
+		if (isMoving(gyro_data, zero_rate)==0)        //if patient is stationary, calculate new posture
 			curr_posture_upper = getPosture(accel_data, pitch_angle, roll_angle);
 		else
 			curr_posture_upper = UNDEFINED;    //else use undefined/transition state
@@ -706,15 +710,16 @@ int main(int argc, char *argv[]) {
 		curr_posture_full = getFullPosture(curr_posture_upper, atoi(message_received));
 		interval_posture = curr_posture_full;	//this is the variable to be stored into the current posture sequence (interval_posture is global)
 		
-		
-		
         
 		if (count == 3) {
             posture_message = construct_message(POS, accel_data, curr_posture_full);
         	
-        	printf("hello\n");
+        	printf("hello\n"); //WHY DOES DELETING THIS CREATE AN IMMEDIATE SEG FAULT?????
         	pkt = create_packet(curr_posture_full, fall_risk, id);
         	
+        	printf("upper: %d ", curr_posture_upper);
+			printf("uppermoving: %d ", isMoving(gyro_data, zero_rate));
+			printf("full: %d\n", curr_posture_full);
     		
             /////COMMUNICATE WITH GUI//////
             //memset(send_to_gui, 0, 5*sizeof(char));
@@ -722,7 +727,7 @@ int main(int argc, char *argv[]) {
             //n = write(sockfd3, send_to_gui, strlen(send_to_gui));
             printf("about to send %s\n", pkt);
             n = write(sockfd3, pkt, strlen(pkt));
-            printf("hello\n");
+            
 
 			if (n<0)
 				error("ERROR communicating to GUI");
@@ -730,7 +735,6 @@ int main(int argc, char *argv[]) {
 			n = read(sockfd3,message_received,255); //read from the socket                         
    			 if (n < 0)                                                                  
         		 error("ERROR reading from socket"); 
-			printf("%s\n");
         	count = 0;
 			
 		}
@@ -743,4 +747,3 @@ int main(int argc, char *argv[]) {
 	return 0;
 
 }
-
