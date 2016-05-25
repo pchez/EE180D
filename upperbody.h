@@ -40,3 +40,4 @@ int sequence[3];
 float prev_yaw_upper, curr_yaw_upper, prev_yaw_lower, curr_yaw_lower = 0.0;
 float upper_rotation, lower_rotation = 0.0;
 int fall_risk = 0;
+char id[5];

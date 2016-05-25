@@ -283,7 +283,6 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 	
     *yaw_angle += gyro_rate_z*0.01;
     curr_yaw_upper = *yaw_angle;
-    
     return 0;
 }
 
@@ -297,10 +296,10 @@ void computeRotation(void)
 }
 
 
-int isMoving(data_t gyro_data)
+int isMoving(data_t gyro_data, data_t zero_rate)
 {   
-    float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 20.0)
+    float gyro_total = sqrt(pow(gyro_data.x-zero_rate.x, 2) + pow(gyro_data.y-zero_rate.y, 2) + pow(gyro_data.z-zero_rate.z, 2));
+    if (gyro_total > 10.0)
     {
         return 1;
     }
@@ -646,7 +645,7 @@ int main(int argc, char *argv[]) {
 		
 		
         ////GET UPPER BODY POSTURE////
-		if (isMoving(gyro_data)==0)        //if patient is stationary, calculate new posture
+		if (isMoving(gyro_data, zero_rate)==0)        //if patient is stationary, calculate new posture
 			curr_posture_upper = getPosture(accel_data, pitch_angle, roll_angle);
 		else
 			curr_posture_upper = UNDEFINED;    //else use undefined/transition state
