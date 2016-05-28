@@ -362,7 +362,6 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 		printf("FALL RISK\n");
 		
 	}
-	check_shared_memory();
 }
 
 
@@ -382,7 +381,7 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 		}
 	}
 	*/
-	if (curr_posture_full==SITTING)	//if patient IS sitting, waiting for patient to rotate back
+	if (curr_posture_full==SITTING)	//if patient IS sitting, waiting for patient to rotate back or lie down
 	{
 		if (abs(lower_rotation) > rotate_back_threshold)
 		{
@@ -391,14 +390,11 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 			
 		}
 	}
-	if (prev_posture_full==SITTING) //if patient WAS sitting, see if patient lies down
+	if (curr_posture_full==LEFT || curr_posture_full==RIGHT || curr_posture_full==FACEUP)
 	{
-		if (curr_posture_full==LEFT || curr_posture_full==RIGHT)
-		{
-			printf("Patient laid down on side");
-			fall_risk = 0;
-			
-		}
+		printf("Patient lied down");
+		fall_risk = 0;
+		
 	}
 	if (prev_posture_full==STANDING)
 	{
@@ -413,14 +409,13 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 
 void getIntervalPosture()
 {
-	printf("in getIntervalPosture\n");
 	int rotation_threshold = 50;
 	int fall_reset_status = 0;
 	float prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
 	float prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
 	
 	computeRotation();	//get new rotation
-	
+
 	if (fall_risk==1)
 	{
 		tryToResetFallRisk(prev_upper_rotation, prev_lower_rotation);
@@ -502,9 +497,11 @@ int main(int argc, char *argv[]) {
     struct hostent *server; //struct containing a bunch of info
     struct hostent *gui_server;
 	char message_received[256];
+	char message_received_gui[256];
 	char message[256];
 	char* pkt;
 	char* guiIP;
+	int n1;
 	
 	memset(id, 0, sizeof(char) * 5);
 	sprintf(id, "0000");
@@ -688,17 +685,25 @@ int main(int argc, char *argv[]) {
 		////COMMUNICATE WITH LOWER BODY EDISON/////
 
 		//if connection is established then start communication
+					
 		bzero(message_received, 256);
+		//printf("waiting for lower body message\n");
 		n2 = read(newsockfd2, message_received, 255); //get lower body posture
+		//printf("n2: %d ", n2);
 		if (n2 < 0)
 			error("Error reading from lower body edison");
 			
+		n1 = write(newsockfd2, "ACK", 4);
+		if (n1<0)
+			error("Error writing to lower body edison");
+			
+		//printf("about to call splitstring on \" %s \"\n", message_received);
 		//split string, get lower body posture and current angle from lower body
 		char* angle_received = splitString(message_received); 
 		curr_yaw_lower = (float)atof(angle_received);
 		//printPostureString(atoi(message_received));
 		
-		
+		//printf("about to get upper body posture");
         ////GET UPPER BODY POSTURE////
 		if (isMoving(gyro_data, zero_rate)==0)        //if patient is stationary, calculate new posture
 			curr_posture_upper = getPosture(accel_data, pitch_angle, roll_angle);
@@ -713,8 +718,9 @@ int main(int argc, char *argv[]) {
 		
         
 		if (count == 3) {
-            posture_message = construct_message(POS, accel_data, curr_posture_full);
-        	
+            //posture_message = construct_message(POS, accel_data, curr_posture_full);
+        	check_shared_memory();
+
         	//printf("hello\n"); //WHY DOES DELETING THIS CREATE AN IMMEDIATE SEG FAULT?????
         	pkt = create_packet(curr_posture_full, fall_risk, id);
         	
@@ -726,16 +732,18 @@ int main(int argc, char *argv[]) {
             //memset(send_to_gui, 0, 5*sizeof(char));
 	    	//snprintf(send_to_gui, 4, "%d", curr_posture_full);
             //n = write(sockfd3, send_to_gui, strlen(send_to_gui));
+            bzero(message_received_gui, 256);
             printf("about to send %s\n", pkt);
             n = write(sockfd3, pkt, strlen(pkt));
             
-
+		
 			if (n<0)
 				error("ERROR communicating to GUI");
-			
-			n = read(sockfd3,message_received,255); //read from the socket                         
+			//printf("waiting for gui ACK\n");
+			n = read(sockfd3,message_received_gui,255); //read from the socket                         
    			 if (n < 0)                                                                  
         		 error("ERROR reading from socket"); 
+        	//printf("got response: %s", message_received_gui);
         	count = 0;
 			
 		}
