@@ -245,7 +245,8 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 
 	}
 	
-    *yaw_angle += gyro_rate_z*0.01;
+    *yaw_angle += gyro_rate_z*0.1;
+    printf("yaw angle: %f ", *yaw_angle);
     return 0;
 }
 
@@ -277,12 +278,11 @@ int main(int argc, char *argv[]) {
     char posture_message[20];
     int curr_posture;
     int prev_posture = 0;
-//    int n;
 
 	
 	//SOCKETS AND MESSAGES
 	int sockfd; //Socket descriptor
-    int portno, n;
+    int portno;
     char component[256];
     char endpoint[] = "127.0.0.1";
     struct sockaddr_in serv_addr;
@@ -290,6 +290,7 @@ int main(int argc, char *argv[]) {
 	char message[256];
 	char serv_message[256];
 	int count;
+	int n, n1;
 
 	/////SENSOR INITIALIZATION AND SETUP
 	accel = accel_init();
@@ -369,14 +370,21 @@ int main(int argc, char *argv[]) {
             else
                 curr_posture = UNDEFINED;    //else just use the undefined/transition case
             prev_posture = curr_posture; //set new value for prev posture
+            memset(posture_message, 0, sizeof(char)*20);
             snprintf(posture_message, 10, "%d,%f", curr_posture, yaw_angle);
             //posture_message = construct_message(POS, accel_data, curr_posture);
             printf("posture message: %s ", posture_message);
             n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
     		if (n < 0) 
         		error("ERROR writing to socket");
-
+        		
+        	bzero(message, 256);
+        	printf("waiting for response ");
+			n1 = read(sockfd, message, 10);
+			if (n1 < 0)
+				error("ERROR reading from upper body");
         	count = 0;
+        	printf("got response\n");
 
 		}
         
@@ -388,7 +396,7 @@ int main(int argc, char *argv[]) {
 		//printf("\tX: %f\t Y: %f\t Z: %f\t||", mag_data.x, mag_data.y, mag_data.z);
 		//printf("\t%ld\n", temperature);
 		count++;
-		usleep(10000);
+		usleep(100000);
 
 	}
 
