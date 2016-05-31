@@ -208,7 +208,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     float gyro_data_x, gyro_rate_x;
     float gyro_data_y, gyro_rate_y;
     float gyro_data_z, gyro_rate_z;
-    float gain = 90.0/58.0;
+    float gain = 90.0/65.0;
     
     accel_data_z = accel_data.z;
     if (accel_data_z > 1)
@@ -253,7 +253,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 int isMoving(data_t gyro_data)
 {   
     float gyro_total = sqrt(pow(gyro_data.x, 2) + pow(gyro_data.y, 2) + pow(gyro_data.z, 2));
-    if (gyro_total > 20.0)
+    if (gyro_total > 25.0)
     {
         return 1;
     }
@@ -377,15 +377,16 @@ int main(int argc, char *argv[]) {
             n = write(sockfd, posture_message, strlen(posture_message)); //write to the socket
     		if (n < 0) 
         		error("ERROR writing to socket");
-        		
+        	/*	
         	bzero(message, 256);
         	printf("waiting for response ");
 			n1 = read(sockfd, message, 10);
 			if (n1 < 0)
 				error("ERROR reading from upper body");
-        	count = 0;
+        	
         	printf("got response\n");
-
+		*/
+		count = 0;
 		}
         
         printPostureString(curr_posture);
