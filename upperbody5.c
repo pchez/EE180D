@@ -107,7 +107,7 @@ int getFullPosture(int upper, int lower)
 		if (lower==LEFT)
 			full_posture = UNDEFINED;
 	}
-	if (upper==UNDEFINED || lower==UNDEFINED)
+	else
 	{
 		full_posture = UNDEFINED;
 	}
@@ -243,7 +243,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
     float gyro_data_x, gyro_rate_x;
     float gyro_data_y, gyro_rate_y;
     float gyro_data_z, gyro_rate_z;
-    float gain = 90.0/15.0;
+    float gain = 1.0;
     
     accel_data_z = accel_data.z;
     if (accel_data_z > 1)
@@ -281,7 +281,7 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 
 	}
 	
-    *yaw_angle += gyro_rate_z*0.01;
+    *yaw_angle += gyro_rate_z*delta_t;
     curr_yaw_upper = *yaw_angle;
     
     return 0;
@@ -289,11 +289,11 @@ int getAngles(data_t accel_data, data_t gyro_data, data_t zero_rate, float *pitc
 
 char* create_packet(int posture, int fall_risk, char* id) {
               
-        char* pkt = malloc(20*sizeof(char));  
-        memset(pkt, 0, 20*sizeof(char));                                        
+	char* pkt = malloc(20*sizeof(char));  
+	memset(pkt, 0, 20*sizeof(char));                                        
 
-        snprintf(pkt, 19, "D %d %d %s E", posture, fall_risk, id);
-        return pkt;              
+	snprintf(pkt, 19, "D %d %d %s E", posture, fall_risk, id);
+	return pkt;              
                                                                                 
 }  
 
@@ -320,7 +320,7 @@ void check_shared_memory() {
 		//printf("hello in check_shared_mem\n");
 	}		
 	else  {
-		printf("ID: %s\n", id);
+		//printf("ID: %s\n", id);
 	}		
 
 	close(fd);
@@ -340,7 +340,7 @@ void computeRotation(void)
 int isMoving(data_t gyro_data, data_t zero_rate)
 {   
     float gyro_total = sqrt(pow(gyro_data.x-zero_rate.x, 2) + pow(gyro_data.y-zero_rate.y, 2) + pow(gyro_data.z-zero_rate.z, 2));
-    if (gyro_total > 10.0)
+    if (gyro_total > 25.0)
     {
         return 1;
     }
@@ -356,13 +356,23 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 	|| (sequence1==SITTING && sequence2==ROTATE_ALL_RIGHT)
 	|| (sequence1==LEFT && sequence2==SITTING)
 	|| (sequence1==RIGHT && sequence2==SITTING)
-	|| sequence2==STANDING)
+	|| sequence2==STANDING
+	|| sequence2==FACEDOWN)
 	{
 		fall_risk = 1;
 		printf("FALL RISK\n");
 		
 	}
-	check_shared_memory();
+	printf("sensor spike: %d \n", sensor_spike);
+	if ((sequence1==STANDING && (sequence2==LEFT || sequence2==RIGHT || sequence2==FACEDOWN || sequence2==FACEUP))
+	|| (sequence0==STANDING && (sequence2==LEFT || sequence2==RIGHT || sequence2==FACEDOWN || sequence2==FACEUP)))
+	{
+		if (sensor_spike==1)	//if gyro data spiked within the interval
+		{
+			fall_risk = 2;
+			printf("PATIENT FELL\n");
+		}	
+	}
 }
 
 
@@ -382,7 +392,7 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 		}
 	}
 	*/
-	if (curr_posture_full==SITTING)	//if patient IS sitting, waiting for patient to rotate back
+	if (curr_posture_full==SITTING)	//if patient IS sitting, waiting for patient to rotate back or lie down
 	{
 		if (abs(lower_rotation) > rotate_back_threshold)
 		{
@@ -391,14 +401,11 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 			
 		}
 	}
-	if (prev_posture_full==SITTING) //if patient WAS sitting, see if patient lies down
+	if (curr_posture_full==LEFT || curr_posture_full==RIGHT || curr_posture_full==FACEUP)
 	{
-		if (curr_posture_full==LEFT || curr_posture_full==RIGHT)
-		{
-			printf("Patient laid down on side");
-			fall_risk = 0;
-			
-		}
+		printf("Patient lied down");
+		fall_risk = 0;
+		
 	}
 	if (prev_posture_full==STANDING)
 	{
@@ -411,22 +418,36 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 	printf("\n");
 }
 
+int determineSensorSpike(data_t gyro_data, data_t zero_rate)
+{
+	float gyro_total = sqrt(pow(gyro_data.x-zero_rate.x, 2) + pow(gyro_data.y-zero_rate.y, 2) + pow(gyro_data.z-zero_rate.z, 2));
+    printf("gyro total: %f \n", gyro_total);
+    if (gyro_total > 150.0)
+    {
+        return 1;
+    }
+    return sensor_spike;
+}
+
 void getIntervalPosture()
 {
-	printf("in getIntervalPosture\n");
+
+	printf("************************************************TIMER********************************************\n");
 	int rotation_threshold = 50;
 	int fall_reset_status = 0;
 	float prev_upper_rotation = upper_rotation;	//save degrees upper body rotated before fall risk
 	float prev_lower_rotation = lower_rotation;	//save degrees lower body rotated before fall risk
 	
 	computeRotation();	//get new rotation
-	
+
 	if (fall_risk==1)
 	{
 		tryToResetFallRisk(prev_upper_rotation, prev_lower_rotation);
 		//if successfully reset, will execute rest of this function
 	}
-	if (fall_risk==0 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
+	
+	
+	if (fall_risk!=1 &&(curr_posture_full > UNDEFINED || (abs(upper_rotation)>rotation_threshold 
 	|| abs(lower_rotation)>rotation_threshold)))			//if patient stationary or rotation > 50
 	{	
 		printf("upper rotation: %f ", upper_rotation);
@@ -462,7 +483,7 @@ void getIntervalPosture()
 	
 	determineFallRisk(sequence[0], sequence[1], sequence[2]);
 	prev_posture_full = curr_posture_full;
-
+	sensor_spike = 0;
 }
 
 
@@ -502,9 +523,14 @@ int main(int argc, char *argv[]) {
     struct hostent *server; //struct containing a bunch of info
     struct hostent *gui_server;
 	char message_received[256];
+	char message_received_gui[256];
 	char message[256];
 	char* pkt;
 	char* guiIP;
+	int n1;
+	
+	struct timeval prev_time, curr_time, timedif;
+	
 	
 	memset(id, 0, sizeof(char) * 5);
 	sprintf(id, "0000");
@@ -607,6 +633,7 @@ int main(int argc, char *argv[]) {
 		error("ERROR on accept");
 	}
 
+	
     ////SETUP FOR GUI CONNECTION////
     
     printf("setting up connection to gui... ");
@@ -658,7 +685,7 @@ int main(int argc, char *argv[]) {
 	
 	
 
-	it_val.it_value.tv_sec = 3;
+	it_val.it_value.tv_sec = 5;
 	it_val.it_value.tv_usec = 0;
 	it_val.it_interval = it_val.it_value;
 	if (setitimer(ITIMER_REAL, &it_val, NULL) == -1)
@@ -667,7 +694,7 @@ int main(int argc, char *argv[]) {
 		exit(1);
 	}
 	
-	
+	gettimeofday(&prev_time, NULL);
     //read accel and gyro data 
     count = 0;
 	while(1) {
@@ -688,18 +715,29 @@ int main(int argc, char *argv[]) {
 		////COMMUNICATE WITH LOWER BODY EDISON/////
 
 		//if connection is established then start communication
+					
 		bzero(message_received, 256);
+		//printf("waiting for lower body message\n");
 		n2 = read(newsockfd2, message_received, 255); //get lower body posture
+		//printf("n2: %d ", n2);
 		if (n2 < 0)
 			error("Error reading from lower body edison");
-			
+		
+		/*	
+		n1 = write(newsockfd2, "ACK", 4);
+		if (n1<0)
+			error("Error writing to lower body edison");
+		*/
+		//printf("about to call splitstring on \" %s \"\n", message_received);
 		//split string, get lower body posture and current angle from lower body
 		char* angle_received = splitString(message_received); 
-		curr_yaw_lower = (float)atof(angle_received);
+		if (angle_received != NULL)
+			curr_yaw_lower = (float)atof(angle_received);
 		//printPostureString(atoi(message_received));
 		
-		
+		//printf("about to get upper body posture");
         ////GET UPPER BODY POSTURE////
+        sensor_spike = determineSensorSpike(gyro_data, zero_rate);
 		if (isMoving(gyro_data, zero_rate)==0)        //if patient is stationary, calculate new posture
 			curr_posture_upper = getPosture(accel_data, pitch_angle, roll_angle);
 		else
@@ -713,35 +751,65 @@ int main(int argc, char *argv[]) {
 		
         
 		if (count == 3) {
-            posture_message = construct_message(POS, accel_data, curr_posture_full);
-        	
+            //posture_message = construct_message(POS, accel_data, curr_posture_full);
+        	check_shared_memory();
+
         	//printf("hello\n"); //WHY DOES DELETING THIS CREATE AN IMMEDIATE SEG FAULT?????
         	pkt = create_packet(curr_posture_full, fall_risk, id);
         	
-        	printf("upper: %d ", curr_posture_upper);
-			printf("uppermoving: %d ", isMoving(gyro_data, zero_rate));
-			printf("full: %d\n", curr_posture_full);
+        	
+        	//printf("yaw angle: %f upper: %d ", yaw_angle, curr_posture_upper);
+			//printf("uppermoving: %d ", isMoving(gyro_data, zero_rate));
+			//printf("full: %d\n", curr_posture_full);
+    			
     		
             /////COMMUNICATE WITH GUI//////
             //memset(send_to_gui, 0, 5*sizeof(char));
 	    	//snprintf(send_to_gui, 4, "%d", curr_posture_full);
             //n = write(sockfd3, send_to_gui, strlen(send_to_gui));
-            printf("about to send %s\n", pkt);
+            bzero(message_received_gui, 256);
+            //printf("about to send %s\n", pkt);
             n = write(sockfd3, pkt, strlen(pkt));
             
-
+		
 			if (n<0)
 				error("ERROR communicating to GUI");
-			
-			n = read(sockfd3,message_received,255); //read from the socket                         
-   			 if (n < 0)                                                                  
+			//printf("waiting for gui ACK\n");
+			n = read(sockfd3,message_received_gui,255); //read from the socket                         
+   			if (n < 0)                                                                  
         		 error("ERROR reading from socket"); 
+        	printf("message received: %s", message_received_gui);
+        	if (strcmp(message_received_gui, "RESET")==0)
+        	{
+        		fall_risk = 0;
+        	}
+        	//printf("got response: %s", message_received_gui);
+        	
+        	
+        	//gettimeofday(&curr_time, NULL);
+			//timersub(&curr_time, &prev_time, &timedif);
+			//printf("elapsed time is %d seconds %d microseconds. ", timedif.tv_sec, timedif.tv_usec);
+			//delta_t = ((float) timedif.tv_sec )+ (timedif.tv_usec/1000000.0);
+			//printf("delta_t is %f\n", delta_t);
+			//prev_time = curr_time;
         	count = 0;
-			
+        	
+			count = 0;
+
 		}
         
 		count++;
 		usleep(10000);
+		
+		printf("yaw angle: %f upper: %d | ", yaw_angle, curr_posture_upper);
+
+		gettimeofday(&curr_time, NULL);
+		timersub(&curr_time, &prev_time, &timedif);
+		//printf("elapsed time is %d seconds %d microseconds\n", timedif.tv_sec, timedif.tv_usec);
+		delta_t = ((float) timedif.tv_sec )+ (timedif.tv_usec/1000000.0);
+		printf("delta_t is %f\n", delta_t);
+		prev_time = curr_time;
+		
 
 	}
 
