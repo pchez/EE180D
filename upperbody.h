@@ -39,5 +39,7 @@ int interval_posture, prev_posture_full, curr_posture_full = 0;
 int sequence[3];
 float prev_yaw_upper, curr_yaw_upper, prev_yaw_lower, curr_yaw_lower = 0.0;
 float upper_rotation, lower_rotation = 0.0;
+float delta_t = 0.1;
 int fall_risk = 0;
+int sensor_spike = 0; 	//bool for determining that if accel/gyro spikes then there is fall risk
 char id[5];
