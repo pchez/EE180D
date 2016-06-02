@@ -74,6 +74,7 @@ int getFullPosture(int upper, int lower)
 			full_posture = STANDING;
 		else
 			full_posture = SITTING;
+		printf("upper==upright\n");
 	}
 	else if (upper==FACEUP)
 	{
@@ -81,6 +82,7 @@ int getFullPosture(int upper, int lower)
 			full_posture = STANDING;
 		else
 			full_posture = FACEUP;
+		printf("upper==faceup\n");
 	}
 	else if (upper==FACEDOWN)
 	{
@@ -88,32 +90,37 @@ int getFullPosture(int upper, int lower)
 			full_posture = STANDING;
 		else
 			full_posture = FACEDOWN;
+		printf("upper==facedown\n");
 	}
 	else if (upper==LEFT)
 	{
 		if (lower==UPRIGHT || lower==LEFT)
 			full_posture = LEFT;
-		if (lower==FACEDOWN)
+		else if (lower==FACEDOWN)
 			full_posture = STANDING;
-		if (lower==RIGHT)
+		else
 			full_posture = UNDEFINED;
+		printf("upper==left\n");
 	}
 	else if (upper==RIGHT)
 	{
 		if (lower==UPRIGHT || lower==RIGHT)
 			full_posture = RIGHT;
-		if (lower==FACEDOWN)
+		else if (lower==FACEDOWN)
 			full_posture = STANDING;
-		if (lower==LEFT)
+		else
 			full_posture = UNDEFINED;
+		printf("upper==right\n");
 	}
 	else
 	{
 		full_posture = UNDEFINED;
+		printf("else\n");
 	}
 			
 	
 	return full_posture;
+	
 }
 
 typedef enum {
@@ -356,23 +363,29 @@ void determineFallRisk(int sequence0, int sequence1, int sequence2)
 	|| (sequence1==SITTING && sequence2==ROTATE_ALL_RIGHT)
 	|| (sequence1==LEFT && sequence2==SITTING)
 	|| (sequence1==RIGHT && sequence2==SITTING)
-	|| sequence2==STANDING
-	|| sequence2==FACEDOWN)
+	|| sequence2==STANDING)
 	{
 		fall_risk = 1;
 		printf("FALL RISK\n");
-		
+		return;
 	}
 	printf("sensor spike: %d \n", sensor_spike);
-	if ((sequence1==STANDING && (sequence2==LEFT || sequence2==RIGHT || sequence2==FACEDOWN || sequence2==FACEUP))
-	|| (sequence0==STANDING && (sequence2==LEFT || sequence2==RIGHT || sequence2==FACEDOWN || sequence2==FACEUP)))
+	if ((sequence1==STANDING && (curr_posture_full==LEFT || curr_posture_full==RIGHT || curr_posture_full==FACEDOWN || curr_posture_full==FACEUP))
+	|| (sequence0==STANDING && (curr_posture_full==LEFT || curr_posture_full==RIGHT || curr_posture_full==FACEDOWN || curr_posture_full==FACEUP)))
 	{
 		if (sensor_spike==1)	//if gyro data spiked within the interval
 		{
 			fall_risk = 2;
 			printf("PATIENT FELL\n");
+			return;
 		}	
+		
 	}
+	
+	printf("fall risk set back to 0\n");
+	fall_risk = 0;
+	return;
+	
 }
 
 
@@ -380,20 +393,14 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 {
 	float rotate_back_threshold = 50;
 	printf("Trying to reset fall risk signal...");
-	/*
-	if (sequence[2]==ROTATE_UPPER_LEFT || sequence[2]==ROTATE_UPPER_RIGHT
-	|| sequence[2]==ROTATE_ALL_LEFT || sequence[2]==ROTATE_ALL_RIGHT)
+	
+	if (curr_posture_full==SITTING)	//waiting for patient to rotate back or lie down
 	{
-		if (abs(lower_rotation - prev_lower_rotation) < rotate_back_threshold)
+		if (prev_posture_full==STANDING)	//if patient was standing in the prev interval, we know patient sat down
 		{
-			fall_risk = 0;
-			printf("Patient rotated back successfully");
-			return 0;
+		 	printf("Patient sat down");
+			fall_risk = 1;
 		}
-	}
-	*/
-	if (curr_posture_full==SITTING)	//if patient IS sitting, waiting for patient to rotate back or lie down
-	{
 		if (abs(lower_rotation) > rotate_back_threshold)
 		{
 			printf("Patient rotated back");				
@@ -401,20 +408,13 @@ void tryToResetFallRisk(float prev_upper_rotation, float prev_lower_rotation)
 			
 		}
 	}
-	if (curr_posture_full==LEFT || curr_posture_full==RIGHT || curr_posture_full==FACEUP)
+	else if (curr_posture_full==LEFT || curr_posture_full==RIGHT || curr_posture_full==FACEUP || curr_posture_full == FACEDOWN)
 	{
 		printf("Patient lied down");
 		fall_risk = 0;
 		
 	}
-	if (prev_posture_full==STANDING)
-	{
-		if (curr_posture_full==SITTING)
-		{
-			printf("Patient sat down");
-			fall_risk = 1;
-		}
-	}
+
 	printf("\n");
 }
 
@@ -422,7 +422,7 @@ int determineSensorSpike(data_t gyro_data, data_t zero_rate)
 {
 	float gyro_total = sqrt(pow(gyro_data.x-zero_rate.x, 2) + pow(gyro_data.y-zero_rate.y, 2) + pow(gyro_data.z-zero_rate.z, 2));
     printf("gyro total: %f \n", gyro_total);
-    if (gyro_total > 150.0)
+    if (gyro_total > 120.0)
     {
         return 1;
     }
@@ -682,9 +682,6 @@ int main(int argc, char *argv[]) {
 		perror("Unable to catch SIGALRM");
 		exit(1);
 	}
-	
-	
-
 	it_val.it_value.tv_sec = 5;
 	it_val.it_value.tv_usec = 0;
 	it_val.it_interval = it_val.it_value;
@@ -710,6 +707,9 @@ int main(int argc, char *argv[]) {
         //printf("upper moving: %d ", isMoving(gyro_data, zero_rate));
         //printf("upper yaw angle: %f\n", yaw_angle);
         
+        
+        printf("X: %f\t Y: %f\t Z: %f\t", accel_data.x, accel_data.y, accel_data.z);
+		printf("\tX: %f\t Y: %f\t Z: %f\n", gyro_data.x, gyro_data.y, gyro_data.z);
         
         
 		////COMMUNICATE WITH LOWER BODY EDISON/////
@@ -768,7 +768,7 @@ int main(int argc, char *argv[]) {
 	    	//snprintf(send_to_gui, 4, "%d", curr_posture_full);
             //n = write(sockfd3, send_to_gui, strlen(send_to_gui));
             bzero(message_received_gui, 256);
-            //printf("about to send %s\n", pkt);
+            printf("about to send %s\n", pkt);
             n = write(sockfd3, pkt, strlen(pkt));
             
 		
@@ -778,11 +778,8 @@ int main(int argc, char *argv[]) {
 			n = read(sockfd3,message_received_gui,255); //read from the socket                         
    			if (n < 0)                                                                  
         		 error("ERROR reading from socket"); 
-        	printf("message received: %s", message_received_gui);
-        	if (strcmp(message_received_gui, "RESET")==0)
-        	{
-        		fall_risk = 0;
-        	}
+        	printf("message received: %s\n", message_received_gui);
+
         	//printf("got response: %s", message_received_gui);
         	
         	
@@ -792,7 +789,6 @@ int main(int argc, char *argv[]) {
 			//delta_t = ((float) timedif.tv_sec )+ (timedif.tv_usec/1000000.0);
 			//printf("delta_t is %f\n", delta_t);
 			//prev_time = curr_time;
-        	count = 0;
         	
 			count = 0;
 
@@ -801,13 +797,12 @@ int main(int argc, char *argv[]) {
 		count++;
 		usleep(10000);
 		
-		printf("yaw angle: %f upper: %d | ", yaw_angle, curr_posture_upper);
 
 		gettimeofday(&curr_time, NULL);
 		timersub(&curr_time, &prev_time, &timedif);
 		//printf("elapsed time is %d seconds %d microseconds\n", timedif.tv_sec, timedif.tv_usec);
 		delta_t = ((float) timedif.tv_sec )+ (timedif.tv_usec/1000000.0);
-		printf("delta_t is %f\n", delta_t);
+		//printf("delta_t is %f\n", delta_t);
 		prev_time = curr_time;
 		
 
